@@ -38,28 +38,32 @@ async def render_page(id, secure_hash):
     html_code = f'''
     
     <p>
-    <center><h5>Click on 👇 button to watch/download in your favorite player</h5></center>
-    <center>   
-    <button style="border: 0; padding: 0; width: 240px; height: 50px; overflow: hidden;" onclick="window.location.href = 'intent:{current_url}#Intent;package=com.mxtech.videoplayer.ad;S.title={file_data.file_name};end'">
-        <img src="https://graph.org/file/f82545dc211d0d3ce2786.jpg" alt="MX PLAYER Logo" style="width: 100%; height: 100%; border-radius: 0; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;">
-    </button>
+    <center>
+    <button style="display: inline-block; border-radius: 5px; border: none; cursor: pointer; padding: 2px auto; text-align: center; text-decoration: none; background-color: #c0e0ff; overflow: hidden;" onclick="window.location.href = 'intent:{current_url}#Intent;package=com.mxtech.videoplayer.ad;S.title={file_data.file_name};end'">
+    <img src="https://i.postimg.cc/L4xq42xt/mxlogo-1-removebg-preview.png" alt="MX PLAYER Logo" style="max-width: 150px; height: 40px; display: block; margin: 0 auto;">
+</button>
 
-    <button style="border: 0; padding: 0; width: 240px; height: 50px; overflow: hidden; background-color: #ADD8E6;" onclick="window.location.href = 'vlc://{current_url}'">
-        <img src="https://graph.org/file/dbdd7bcc424db07891ef2.jpg" alt="VLC Logo" style="width: 100%; height: 100%; border-radius: 0; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;">
-    </button>
-    
-    <button style="border: 0; padding: 0; width: 240px; height: 50px; overflow: hidden;" onclick="window.location.href = 'playit://playerv2/video?url={current_url}&amp;title={file_data.file_name}'">
-        <img src="https://graph.org/file/76bb156c0944c056d05b9.jpg" alt="Playit Logo" style="width: 100%; height: 100%; border-radius: 0; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;">
-    </button>
+<button style="display: inline-block; border-radius: 5px; border: none; cursor: pointer; padding: 3px 40px; text-align: center; text-decoration: none; background-color: #c0e0ff; overflow: hidden;" onclick="window.location.href = 'vlc://{current_url}'">
+    <img src="https://i.postimg.cc/tCs9xqp5/1000029028-removebg-preview.png" alt="MX PLAYER Logo" style="max-width: 280px; height: 40px; display: block; margin: 0 auto;">
+</button>
 
-    <br><br> <!-- Add vertical gap here -->
-        
-    <button style="border: 0; padding: 0; width: 300px; height: 40px; font-size: 20px; background-color: blue; border: 2px solid black; border-radius: 0; border-bottom-left-radius: 5px; border-top-left-radius: 5px; border-bottom-right-radius: 5px; border-top-right-radius: 5px; padding: 0; color: white;" onclick="window.location.href = '{current_url}'">Download Now</button>
-    
+<div style="height: 5px;"></div>
+
+<button style="display: inline-block; border-radius: 5px; border: none; cursor: pointer; padding: 3px auto; text-align: center; text-decoration: none; background-color: #c0e0ff; overflow: hidden;" onclick="window.location.href = 'playit://playerv2/video?url={current_url}&amp;title={file_data.file_name}'">
+    <img src="https://i.postimg.cc/4Nx2bBKX/c0-C4vn-Aa-1-removebg-preview.png" alt="MX PLAYER Logo" style="max-width: 150px; height: 40px; display: block; margin: 0 80px;">
+</button>
+<div style="height: 5px;"></div>
+<button style="display: inline-block; border-radius: 5px; border: none; cursor: pointer; padding: 3px auto; text-align: center; text-decoration: none; background-color: #c0e0ff; overflow: hidden;" onclick="window.location.href = '`intent:${current_url}#Intent;action=com.young.simple.player.playback_online;package=com.young.simple.player;end`">
+    <img src="https://i.postimg.cc/WzPyFbQp/ZKTg-V9-HV-1-removebg-preview.png" alt="MX PLAYER Logo" style="max-width: 150px; height: 40px; display: block; margin: 0 80px;">
+</button>
+
+<div style="height: 10px;"></div>
+
+<button style="border: 0; padding: 0; width: 320px; height: 40px; font-size: 20px; background-color: #3498db; border: 0; border-radius: 0; border-bottom-left-radius: 5px; border-top-left-radius: 5px; border-bottom-right-radius: 5px; border-top-right-radius: 5px; padding: 0; color: white;" onclick="window.location.href = '{current_url}'">Download Now</button>
+
     </center>
 </p>
-    <a href="//www.dmca.com/Protection/Status.aspx?ID=fea8fffa-2c9a-41c1-a05b-8235f4492291" title="DMCA.com Protection Status" class="dmca-badge"> <img src ="https://images.dmca.com/Badges/DMCA_logo-std-btn120w.png?ID=fea8fffa-2c9a-41c1-a05b-8235f4492291"  alt="DMCA.com Protection Status" /></a>  <script src="https://images.dmca.com/Badges/DMCABadgeHelper.min.js"> </script>
+    <center>Copyright © 2024 NEXTPULSE.<br>All Rights Reserved.<br><a href="//www.dmca.com/Protection/Status.aspx?ID=fea8fffa-2c9a-41c1-a05b-8235f4492291" title="DMCA.com Protection Status" class="dmca-badge"> <img src ="https://images.dmca.com/Badges/dmca-badge-w100-5x1-02.png?ID=fea8fffa-2c9a-41c1-a05b-8235f4492291"  alt="DMCA.com Protection Status" /></a>  <script src="https://images.dmca.com/Badges/DMCABadgeHelper.min.js"> </script></center>
 '''
-
     html += html_code    
     return html
