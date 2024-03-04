@@ -144,7 +144,7 @@ async def batch(client: Client, message: Message):
                 await log_msg.edit_reply_markup(reply_markup)
                 F_text = f"<tr><td>&lt;a href='{stream_link}' target='_blank'&gt; {caption} &lt;/a&gt;</td></tr>"
                 text = f"<tr><td>{F_text}</td></tr>"
-                X = await message.reply_text(text=f"{stream_link}", disable_web_page_preview=True, quote=True)                                                         
+                X = await message.reply_text(text=f"{text}", disable_web_page_preview=True, quote=True)                                                         
             except FloodWait as e:
                 print(f"Sleeping for {str(e.x)}s")
                 await asyncio.sleep(e.x)
