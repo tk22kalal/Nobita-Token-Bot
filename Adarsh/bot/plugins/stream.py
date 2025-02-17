@@ -28,8 +28,21 @@ pass_dict = {}
 pass_db = Database(Var.DATABASE_URL, "ag_passwords")
 
 
+import openpyxl
+from io import BytesIO
+
 @StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
 async def batch(client: Client, message: Message):
+    # Create the Excel workbook
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Batch Links"
+    
+    # Create the header for the Excel file
+    sheet["A1"] = "HTML Format"
+    
+    row_index = 2  # Starting row for the links and captions
+
     while True:
         try:
             # Prompt the user to provide the first message from the DB Channel
@@ -121,7 +134,6 @@ async def batch(client: Client, message: Message):
             return        
 
         for msg in messages:
-
             if bool(CUSTOM_CAPTION) & bool(msg.document):
                 caption = CUSTOM_CAPTION.format(previouscaption="" if not msg.caption else msg.caption.html, filename=msg.document.file_name)
             else:
@@ -130,10 +142,15 @@ async def batch(client: Client, message: Message):
             caption = re.sub(r'@[\w_]+|http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', caption)
             caption = re.sub(r'\s+', ' ', caption.strip())
 
-            if DISABLE_CHANNEL_BUTTON:
-                reply_markup = msg.reply_markup
-            else:
-                reply_markup = None
+            # Create stream link
+            stream_link = f"{Var.URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
+            
+            # Create F_text (HTML format in a single column)
+            F_text = f"<tr><td><a href='#' onclick=\"loadIframe('{stream_link}')\">{caption}</a></td></tr>"
+            
+            # Add F_text to the Excel sheet in a single column
+            sheet[f"A{row_index}"] = F_text
+            row_index += 1
 
             try:
                 log_msg = await msg.copy(chat_id=Var.BIN_CHANNEL)
@@ -142,12 +159,20 @@ async def batch(client: Client, message: Message):
                 online_link = f"{Var.URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
                 reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Share URL", url=stream_link)]])
                 await log_msg.edit_reply_markup(reply_markup)
-                F_text = f"<tr><td>&lt;a href='{stream_link}' target='_blank'&gt; {caption} &lt;/a&gt;</td></tr>"
+                F_text = f"<tr><td>{F_text}</td></tr>"
                 text = f"<tr><td>{F_text}</td></tr>"
                 X = await message.reply_text(text=f"{text}", disable_web_page_preview=True, quote=True)                                                         
             except FloodWait as e:
                 print(f"Sleeping for {str(e.x)}s")
                 await asyncio.sleep(e.x)
+
+    # Save the workbook to a BytesIO buffer
+    excel_buffer = BytesIO()
+    workbook.save(excel_buffer)
+    excel_buffer.seek(0)
+    
+    # Send the Excel file
+    await message.reply_document(excel_buffer, filename="batch_links.xlsx")
 
 
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
