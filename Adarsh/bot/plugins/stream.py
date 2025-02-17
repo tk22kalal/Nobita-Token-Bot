@@ -158,21 +158,20 @@ async def batch(client: Client, message: Message):
                 # Create F_text (HTML format in a single column)
                 F_text = f"<tr><td><a href='#' onclick=\"loadIframe('{stream_link}')\">{caption}</a></td></tr>"
                 
-                # Add F_text to the Excel sheet in a single column
-                sheet[f"A{row_index}"] = F_text
-                row_index += 1
+                # Add F_text to the Excel sheet in a single column using append
+                sheet.append([F_text])
         
             except FloodWait as e:
                 print(f"Sleeping for {str(e.x)}s")
                 await asyncio.sleep(e.x)
         
-        # Save the workbook to a BytesIO buffer
-        excel_buffer = BytesIO()
-        workbook.save(excel_buffer)
-        excel_buffer.seek(0)
-        
-        # Send the Excel file
-        await message.reply_document(excel_buffer, filename="batch_links.xlsx")
+    # Save the workbook to a BytesIO buffer
+    excel_buffer = BytesIO()
+    workbook.save(excel_buffer)
+    excel_buffer.seek(0)
+    
+    # Send the Excel file with the document (without using 'filename' argument)
+    await message.reply_document(excel_buffer, caption="Here is the batch links file")
 
 
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
