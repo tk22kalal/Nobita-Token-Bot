@@ -170,8 +170,9 @@ async def batch(client: Client, message: Message):
     workbook.save(excel_buffer)
     excel_buffer.seek(0)
     
-    # Send the Excel file with the document (without using 'filename' argument)
-    await message.reply_document(excel_buffer, caption="Here is the batch links file")
+    # Send the Excel file with the document and explicit filename
+    await message.reply_document(excel_buffer, filename="batch_links.xlsx", caption="Here is the batch links file")
+
 
 
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
