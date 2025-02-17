@@ -1,50 +1,91 @@
+<!--(c) NobiDeveloper-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta property="og:image" content="https://graph.org/file/5e6d18610741226005e6e.jpg" itemprop="thumbnailUrl">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Token Validation</title>
+    <meta name="monetag" content="f3ecc71ccb639ccf66d9d0dee93d3e7a">
+    <title>{{ title }}</title> <!-- Replace %s with Jinja2 variable -->
+    <link rel="stylesheet" type='text/css' href="https://drive----google.com/uc?export=view&id=1pVLG4gZy7jdow3sO-wFS06aP_A9QX0O6">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css" />
+
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 50px;
+        marquee {
+            font-size: 20px;
+            font-weight: 800;
+            color: Black;
+            font-family: serif;
         }
-        .form-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-top: 30px;
-        }
-        input {
-            padding: 10px;
-            margin-bottom: 20px;
-            font-size: 16px;
-            width: 200px;
-        }
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            background-color: #3498db;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #2980b9;
+
+        marquee {
+            font-size: 30px;
+            font-weight: 800;
+            color: Black;
+            font-family: serif;
         }
     </style>
+
+    <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGkvWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
 </head>
+
 <body>
-    <h1>Enter Your Token to Access</h1>
-    <div class="form-container">
+
+    <header>
+        <marquee bgcolor="#3498db">
+            <div class="toogle"></div>
+            <div id="file-name">
+                {{ file_name }} <!-- Replace %s with Jinja2 variable -->
+            </div>
+        </marquee>
+    </header>
+    
+    <div class="container">
+        <tag src="{{ video_url }}" class="player"></tag> <!-- Replace %s with Jinja2 variable -->
+    </div>
+
+    <!-- Token Input Section -->
+    <div class="token-form">
+        <h2>Enter the Token to Continue</h2>
         <form action="/submit_token" method="POST">
             <input type="text" name="token" placeholder="Enter Token" required>
             <button type="submit">Submit</button>
         </form>
     </div>
+
     <footer>
-        <p><a href="https://play.google.com/store/apps/details?id=com.dv.adm" target="_blank">Download ADM for direct download</a></p>
+        <p><h4>➲Use Google Chrome.<br>➲Refresh Browser 2-3 times by sliding down if not working.<br>➲USE ADM for direct download:- <a href="https://play.google.com/store/apps/details?id=com.dv.adm">CLICK HERE</a></h4></p>     
     </footer>
+
+    <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
+    <script>
+        const controls = [
+            'play-large',
+            'rewind',
+            'play', 
+            'fast-forward', 
+            'progress', 
+            'current-time',
+            'duration',
+            'mute',
+            'volume',
+            'captions',
+            'settings',
+            'pip',
+            'airplay',
+            'download',
+            'fullscreen'
+        ];
+        document.addEventListener('DOMContentLoaded', () => {
+            const player = Plyr.setup('.player', { controls });
+        });
+
+        const body = document.querySelector('body');
+        const footer = document.querySelector('footer');
+        const toogle = document.querySelector('.toogle');
+    </script>
 </body>
 </html>
