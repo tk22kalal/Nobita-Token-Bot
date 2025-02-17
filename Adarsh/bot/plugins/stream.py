@@ -138,41 +138,41 @@ async def batch(client: Client, message: Message):
                 caption = CUSTOM_CAPTION.format(previouscaption="" if not msg.caption else msg.caption.html, filename=msg.document.file_name)
             else:
                 caption = "" if not msg.caption else msg.caption.html
-
+        
             caption = re.sub(r'@[\w_]+|http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', caption)
             caption = re.sub(r'\s+', ' ', caption.strip())
-
-            # Create stream link
-            stream_link = f"{Var.URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-            
-            # Create F_text (HTML format in a single column)
-            F_text = f"<tr><td><a href='#' onclick=\"loadIframe('{stream_link}')\">{caption}</a></td></tr>"
-            
-            # Add F_text to the Excel sheet in a single column
-            sheet[f"A{row_index}"] = F_text
-            row_index += 1
-
+        
             try:
+                # Copy the message to the BIN_CHANNEL
                 log_msg = await msg.copy(chat_id=Var.BIN_CHANNEL)
                 await asyncio.sleep(0.5)
+                
+                # Generate the stream link and online link
                 stream_link = f"{Var.URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
                 online_link = f"{Var.URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
+                
+                # Add the reply markup with a share URL button
                 reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Share URL", url=stream_link)]])
                 await log_msg.edit_reply_markup(reply_markup)
-                F_text = f"<tr><td>{F_text}</td></tr>"
-                text = f"<tr><td>{F_text}</td></tr>"
-                X = await message.reply_text(text=f"{text}", disable_web_page_preview=True, quote=True)                                                         
+                
+                # Create F_text (HTML format in a single column)
+                F_text = f"<tr><td><a href='#' onclick=\"loadIframe('{stream_link}')\">{caption}</a></td></tr>"
+                
+                # Add F_text to the Excel sheet in a single column
+                sheet[f"A{row_index}"] = F_text
+                row_index += 1
+        
             except FloodWait as e:
                 print(f"Sleeping for {str(e.x)}s")
                 await asyncio.sleep(e.x)
-
-    # Save the workbook to a BytesIO buffer
-    excel_buffer = BytesIO()
-    workbook.save(excel_buffer)
-    excel_buffer.seek(0)
-    
-    # Send the Excel file
-    await message.reply_document(excel_buffer, filename="batch_links.xlsx")
+        
+        # Save the workbook to a BytesIO buffer
+        excel_buffer = BytesIO()
+        workbook.save(excel_buffer)
+        excel_buffer.seek(0)
+        
+        # Send the Excel file
+        await message.reply_document(excel_buffer, filename="batch_links.xlsx")
 
 
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
