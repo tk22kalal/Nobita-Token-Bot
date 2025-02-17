@@ -7,12 +7,12 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="monetag" content="f3ecc71ccb639ccf66d9d0dee93d3e7a">
-    <title>Video Streaming Page</title>
+    <title>%s</title>
     <link rel="stylesheet" type='text/css' href="https://drive----google.com/uc?export=view&id=1pVLG4gZy7jdow3sO-wFS06aP_A9QX0O6">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     <link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css" />
-    
+
     <style>
         marquee {
             font-size: 30px;
@@ -20,41 +20,84 @@
             color: Black;
             font-family: serif;
         }
-        #token-input {
-            display: none;
-            margin: 20px;
+
+        /* Pop-up style */
+        #popupBox {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
         }
+
+        #popupBox .popupContent {
+            background: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        #popupBox input {
+            padding: 10px;
+            font-size: 16px;
+            width: 80%;
+            margin-bottom: 10px;
+        }
+
+        #popupBox button {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+        }
+
+        #popupBox button:hover {
+            background-color: #2980b9;
+        }
+
         #video-container {
             display: none;
         }
     </style>
+
     <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGkvWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
 </head>
 
 <body>
+    <!-- Token Input Pop-up -->
+    <div id="popupBox">
+        <div class="popupContent">
+            <h2>Please enter your token to continue</h2>
+            <input type="text" id="tokenInput" placeholder="Enter Token" required>
+            <button onclick="validateToken()">Submit</button>
+            <p id="error-message" style="color: red; display: none;">❌ Invalid Token! Please try again.</p>
+        </div>
+    </div>
+
     <header>
         <marquee bgcolor="#3498db">
+            <div class="toogle"></div>
             <div id="file-name">
-                Video Streaming Service
+                %s
             </div>
         </marquee>
     </header>
-    
-    <div id="token-input">
-        <label for="token">Enter Token:</label>
-        <input type="text" id="token" />
-        <button id="submit-token">Submit</button>
-        <p id="error-message" style="color: red; display: none;">Incorrect token. Please try again.</p>
-    </div>
 
     <div id="video-container" class="container">
         <tag src="%s" class="player"></tag>
     </div>
 
     <footer>
-        <p>
-            <h4>➲Use Google Chrome.<br>➲Refresh Browser 2-3 times by sliding down if not working.<br>➲USE ADM for direct download:- <a href="https://play.google.com/store/apps/details?id=com.dv.adm">CLICK HERE</a></h4>
-        </p>
+        <p><h4>➲Use Google Chrome.<br>➲Refresh Browser 2-3 times by sliding down if not working.<br>➲USE ADM for direct download:- <a href="https://play.google.com/store/apps/details?id=com.dv.adm">CLICK HERE</a></h4></p>     
     </footer>
 
     <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
@@ -78,23 +121,23 @@
         ];
         
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('token-input').style.display = 'block';
-
-            document.getElementById('submit-token').addEventListener('click', () => {
-                const token = document.getElementById('token').value;
-                if (token === '12345678') {
-                    document.getElementById('token-input').style.display = 'none';
-                    document.getElementById('video-container').style.display = 'block';
-                    const player = Plyr.setup('.player', { controls });
-                } else {
-                    document.getElementById('error-message').style.display = 'block';
-                }
-            });
+            // Initialize the video container and controls
+            const player = Plyr.setup('.player', { controls });
+            document.getElementById('video-container').style.display = 'none'; // Hide video initially
         });
 
-        const body = document.querySelector('body');
-        const footer = document.querySelector('footer');
-        const toogle = document.querySelector('.toogle');
+        // Validate the token entered by the user
+        function validateToken() {
+            const enteredToken = document.getElementById('tokenInput').value;
+            const validToken = "12345678";  // Correct token
+
+            if (enteredToken === validToken) {
+                document.getElementById('popupBox').style.display = 'none';  // Hide pop-up if valid token
+                document.getElementById('video-container').style.display = 'block'; // Show video container
+            } else {
+                document.getElementById('error-message').style.display = 'block'; // Show error message
+            }
+        }
     </script>
 </body>
 </html>
