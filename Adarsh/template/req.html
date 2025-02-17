@@ -1,148 +1,50 @@
-<!--(c) NobiDeveloper-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta property="og:image" content="https://graph.org/file/5e6d18610741226005e6e.jpg" itemprop="thumbnailUrl">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="monetag" content="f3ecc71ccb639ccf66d9d0dee93d3e7a">
-    <title>%s</title>
-    <link rel="stylesheet" type='text/css' href="https://drive----google.com/uc?export=view&id=1pVLG4gZy7jdow3sO-wFS06aP_A9QX0O6">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
-    <link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css" />
-    
+    <title>Token Validation</title>
     <style>
-        marquee {
-            font-size: 30px;
-            font-weight: 800;
-            color: Black;
-            font-family: serif;
-        }
-        /* Styling for the token input popup */
-        .token-popup {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            align-items: center;
-            justify-content: center;
-        }
-
-        .token-popup-content {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
+        body {
+            font-family: Arial, sans-serif;
             text-align: center;
-            width: 300px;
+            padding: 50px;
         }
-
-        .token-popup input {
+        .form-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 30px;
+        }
+        input {
             padding: 10px;
-            width: 80%;
-            margin-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 16px;
+            width: 200px;
         }
-
-        .token-popup button {
+        button {
             padding: 10px 20px;
-            background: #3498db;
+            font-size: 16px;
+            background-color: #3498db;
             color: white;
             border: none;
             cursor: pointer;
-            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #2980b9;
         }
     </style>
 </head>
-
 <body>
-
-    <header>
-        <marquee bgcolor="#3498db">
-            <div id="file-name">
-                %s
-            </div>
-        </marquee>
-    </header>
-	
-    <div class="container">
-        <tag src="%s" class="player"></tag>
+    <h1>Enter Your Token to Access</h1>
+    <div class="form-container">
+        <form action="/submit_token" method="POST">
+            <input type="text" name="token" placeholder="Enter Token" required>
+            <button type="submit">Submit</button>
+        </form>
     </div>
-
     <footer>
-        <p><h4>➲Use Google Chrome.<br>➲Refresh Browser 2-3 times by sliding down if not working.<br>➲USE ADM for direct download:- <a href="https://play.google.com/store/apps/details?id=com.dv.adm">CLICK HERE</a> </h4>
-        </p>	     
+        <p><a href="https://play.google.com/store/apps/details?id=com.dv.adm" target="_blank">Download ADM for direct download</a></p>
     </footer>
-
-    <!-- Token Input Popup -->
-    <div class="token-popup" id="token-popup">
-        <div class="token-popup-content">
-            <h3>Enter Today's Token</h3>
-            <input type="text" id="token-input" placeholder="Enter token here" />
-            <button id="submit-token">Submit</button>
-        </div>
-    </div>
-
-    <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
-    <script>
-        // Initialize the video player
-        const controls = [
-            'play-large',
-            'rewind',
-            'play', 
-            'fast-forward', 
-            'progress', 
-            'current-time',
-            'duration',
-            'mute',
-            'volume',
-            'captions',
-            'settings',
-            'pip',
-            'airplay',
-            'download',
-            'fullscreen'
-        ];
-        document.addEventListener('DOMContentLoaded', () => {
-            const player = Plyr.setup('.player', { controls });
-        });
-
-        // Token validation popup
-        document.addEventListener('DOMContentLoaded', () => {
-            // Show token popup
-            const tokenPopup = document.getElementById('token-popup');
-            tokenPopup.style.display = 'flex';
-
-            // Submit token
-            const submitButton = document.getElementById('submit-token');
-            submitButton.addEventListener('click', () => {
-                const token = document.getElementById('token-input').value.trim();
-                
-                // Validate the token here
-                fetch('/validate_token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ token: token })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('✅ Access Granted!');
-                        tokenPopup.style.display = 'none';  // Hide the token popup
-                    } else {
-                        alert('❌ Invalid Token. Please try again.');
-                    }
-                })
-                .catch(err => {
-                    alert('An error occurred. Please try again later.');
-                });
-            });
-        });
-    </script>
 </body>
 </html>
