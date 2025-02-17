@@ -166,12 +166,17 @@ async def batch(client: Client, message: Message):
                 await asyncio.sleep(e.x)
         
     # Save the workbook to a BytesIO buffer
+    # Save the workbook to a BytesIO buffer
     excel_buffer = BytesIO()
     workbook.save(excel_buffer)
     excel_buffer.seek(0)
     
     # Send the Excel file with the document and explicit filename
-    await message.reply_document(excel_buffer, filename="batch_links.xlsx", caption="Here is the batch links file")
+    await message.reply_document(
+        document=excel_buffer, 
+        caption="Here is the batch links file", 
+        file_name="batch_links.xlsx"
+    )
 
 
 
