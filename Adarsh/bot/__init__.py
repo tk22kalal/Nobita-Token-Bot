@@ -1,6 +1,5 @@
 # (c) NobiDeveloper
 from pyrogram import Client
-import pyromod.listen
 from ..vars import Var
 from os import getcwd
 from .custom_client import CustomClient
