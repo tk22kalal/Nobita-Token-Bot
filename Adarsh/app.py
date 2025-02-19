@@ -1,10 +1,10 @@
-from aiohttp import web
+from flask import Flask
+app = Flask(__name__)
 
-async def hello(request):
-    return web.Response(text="Hello, World!")
+@app.route('/')
+def hello_world():
+    return 'GreyMatters'
 
-app = web.Application()
-app.router.add_get('/', hello)
 
-if __name__ == '__main__':
-    web.run_app(app)
+if __name__ == "__main__":
+    app.run()
