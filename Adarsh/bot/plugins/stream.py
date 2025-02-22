@@ -196,9 +196,8 @@ async def private_receive_handler(c: Client, m: Message):
     try:
         log_msg = await m.copy(chat_id=Var.BIN_CHANNEL)
         await asyncio.sleep(0.5)
-        WORKER_URL = "https://stream.nextpulse.workers.dev/"  # Cloudflare Worker URL
-        stream_link = f"{WORKER_URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-        download_link = f"{WORKER_URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
+        stream_link = f"{Var.URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
+        download_link = f"{Var.URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
 
         reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("STREAM ⏯️", url=stream_link)]])
         await log_msg.edit_reply_markup(reply_markup)        
@@ -225,9 +224,8 @@ async def private_receive_handler(c: Client, m: Message):
     try:
         log_msg = await m.copy(chat_id=Var.BIN_CHANNEL)
         await asyncio.sleep(0.5)
-        WORKER_URL = "https://stream.nextpulse.workers.dev/"  # Cloudflare Worker URL
-        stream_link = f"{WORKER_URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-        download_link = f"{WORKER_URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
+        stream_link = f"{Var.URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
+        download_link = f"{Var.URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
 
         reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("STREAM ⏯️", url=stream_link)]])
         await log_msg.edit_reply_markup(reply_markup)        
