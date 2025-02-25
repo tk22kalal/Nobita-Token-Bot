@@ -1,16 +1,13 @@
 import os
 from os import getenv, environ
 from dotenv import load_dotenv
+import random
 
 
 
 load_dotenv()
 
 
-import random
-import os
-from os import getenv, environ
-from urllib.parse import quote_plus
 
 class Var(object):
     MULTI_CLIENT = False
