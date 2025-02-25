@@ -47,15 +47,20 @@ class Var(object):
         "stream4.nextpulse.workers.dev"
     ]
 
-    # Select a random worker for each request
+    # Select a random worker
     @staticmethod
     def get_random_worker():
-        return f"https://{random.choice(Var.WORKER_DOMAINS)}/"
+        return random.choice(Var.WORKER_DOMAINS)
 
-    # Keep URL as a property so it dynamically changes
+    # Fix: Set FQDN to always return a worker
+    @property
+    def FQDN(self):
+        return self.get_random_worker()
+
+    # Fix: Ensure URL is dynamically generated
     @property
     def URL(self):
-        return self.get_random_worker()
+        return f"https://{self.FQDN}/"
 
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
