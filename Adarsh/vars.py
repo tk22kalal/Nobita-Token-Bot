@@ -7,6 +7,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+import random
+import os
+from os import getenv, environ
+from urllib.parse import quote_plus
+
 class Var(object):
     MULTI_CLIENT = False
     API_ID = int(getenv('API_ID', ''))
@@ -34,12 +39,23 @@ class Var(object):
     else:
         ON_HEROKU = False
 
-    # Updated FQDN to use Cloudflare Worker domain
-    FQDN = "stream.nextpulse.workers.dev"
+    # Multiple Cloudflare Worker URLs
+    WORKER_DOMAINS = [
+        "stream1.nextpulse.workers.dev",
+        "stream2.nextpulse.workers.dev",
+        "stream3.nextpulse.workers.dev",
+        "stream4.nextpulse.workers.dev"
+    ]
 
-    # Ensuring HTTPS for security
-    HAS_SSL = True  
-    URL = f"https://{FQDN}/"
+    # Select a random worker for each request
+    @staticmethod
+    def get_random_worker():
+        return f"https://{random.choice(Var.WORKER_DOMAINS)}/"
+
+    # Keep URL as a property so it dynamically changes
+    @property
+    def URL(self):
+        return self.get_random_worker()
 
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
