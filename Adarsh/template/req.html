@@ -1,3 +1,4 @@
+<!--(c) NobiDeveloper-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,8 +13,14 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     <link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <style>
-        .navbar {
+
+
+<style>
+	body {
+            margin: 0;
+            font-family: Raleway, sans-serif;
+        }
+	.navbar {
             background-color: #2ecc71;
             color: white;
             display: flex;
@@ -38,83 +45,97 @@
             color: white;
             cursor: pointer;
         }
-        marquee{
-            font-size: 30px;
-            font-weight: 800;
-            color: Black;
-            font-family: serif;
-        }
+      marquee{
+      font-size: 20px;
+      font-weight: 800;
+      color: Black;
+      font-family: serif;
+      }
     </style>
+    
+    
 </head>
+
 <body>
     <nav class="navbar">
         <span class="icon">☰</span>
         <span class="logo">NextPulse</span>
         <span class="icon"><i class="fas fa-search"></i></span>
     </nav>
+
+    
     <header>
-        <marquee bgcolor="#2ecc71">
-            <div class="toogle"></div>
-            <div id="file-name">%s</div>
-        </marquee>
+        <marquee bgcolor="#2ecc71"
+<div class="toogle"></div>
+        <div id="file-name">
+            %s
+        </div>
+</marquee>
     </header>
+	
     <div class="container">
         <tag src="%s" class="player"></tag>
     </div>
+
     <footer>
-        <p><h4>➲Use Google Chrome.<br>➲Refresh Browser 2-3 times by sliding down if not working.<br>➲USE ADM for direct download:- <a href="https://play.google.com/store/apps/details?id=com.dv.adm">CLICK HERE</a> </h4></p>     
+	   <p><h4>➲Use Google Chrome.<br>➲Refresh Browser 2-3 times by sliding down if not working.<br>➲USE ADM for direct download:- <a href="https://play.google.com/store/apps/details?id=com.dv.adm">CLICK HERE</a> </h4>
+    </p>	     
     </footer>
-    <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
-    <script>
-        const controls = [
-            'play-large',
-            'rewind',
-            'play', 
-            'fast-forward', 
-            'progress', 
-            'current-time',
-            'duration',
-            'mute',
-            'volume',
-            'captions',
-            'settings',
-            'pip',
-            'airplay',
-            'fullscreen'
-        ];
+<script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
+<script>
+    const controls = [
+        'play-large',
+        'rewind',
+        'play', 
+        'fast-forward', 
+        'progress', 
+        'current-time',
+        'duration',
+        'mute',
+        'volume',
+        'captions',
+        'settings',
+        'pip',
+        'airplay',
+        'fullscreen'
+    ];
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const players = Plyr.setup('.player', { controls });
-            const player = players[0];
-            const videoElement = document.querySelector('.player');
-            let lastTapTime = 0;
+    document.addEventListener('DOMContentLoaded', () => {
+        const players = Plyr.setup('.player', { controls });
+        const player = players[0]; // Get the first (or only) player instance
+        const videoElement = document.querySelector('.player');
+        let lastTapTime = 0; // Store last tap time
 
-            videoElement.addEventListener('dblclick', (event) => {
-                event.preventDefault();
-            });
-
-            videoElement.addEventListener('touchend', (event) => {
-                event.preventDefault();
-                const currentTime = new Date().getTime();
-                const tapGap = currentTime - lastTapTime;
-
-                if (tapGap < 300) {
-                    const clickX = event.changedTouches[0].clientX;
-                    const videoWidth = videoElement.clientWidth;
-
-                    if (clickX < videoWidth / 2) {
-                        player.currentTime = Math.max(0, player.currentTime - 10);
-                    } else {
-                        player.currentTime = Math.min(player.duration, player.currentTime + 10);
-                    }
-                }
-                lastTapTime = currentTime;
-            });
+        // Disable Plyr's default fullscreen behavior on double-tap
+        videoElement.addEventListener('dblclick', (event) => {
+            event.preventDefault(); // Stops default fullscreen action
         });
 
-        const body = document.querySelector('body');
-        const footer = document.querySelector('footer');
-        const toogle = document.querySelector('.toogle');
-    </script>
+        videoElement.addEventListener('touchend', (event) => {
+            event.preventDefault(); // Prevents default fullscreen activation on double-tap
+
+            const currentTime = new Date().getTime();
+            const tapGap = currentTime - lastTapTime;
+
+            if (tapGap < 300) { // Detect double-tap within 300ms
+                const clickX = event.changedTouches[0].clientX;
+                const videoWidth = videoElement.clientWidth;
+
+                if (clickX < videoWidth / 2) {
+                    // Double-tap on left side → Rewind 10 seconds
+                    player.currentTime = Math.max(0, player.currentTime - 10);
+                } else {
+                    // Double-tap on right side → Forward 10 seconds
+                    player.currentTime = Math.min(player.duration, player.currentTime + 10);
+                }
+            }
+            lastTapTime = currentTime;
+        });
+    });
+
+    const body = document.querySelector('body');
+    const footer = document.querySelector('footer');
+    const toogle = document.querySelector('.toogle');
+</script>
 </body>
 </html>
