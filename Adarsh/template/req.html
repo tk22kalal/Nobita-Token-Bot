@@ -54,31 +54,55 @@
     </p>	     
     </footer>
     <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
-	<script>
-        const controls = [
-              'play-large',
-              'rewind',
-              'play', 
-              'fast-forward', 
-              'progress', 
-              'current-time',
-              'duration',
-              'mute',
-              'volume',
-              'captions',
-              'settings',
-              'pip',
-              'airplay',
-              'download',
-              'fullscreen'
-            ];
-        document.addEventListener('DOMContentLoaded', () => {
-            const player = Plyr.setup('.player', { controls });
-        });
+<script>
+    const controls = [
+        'play-large',
+        'rewind',
+        'play', 
+        'fast-forward', 
+        'progress', 
+        'current-time',
+        'duration',
+        'mute',
+        'volume',
+        'captions',
+        'settings',
+        'pip',
+        'airplay',
+        'download',
+        'fullscreen'
+    ];
 
-        const body = document.querySelector('body');
-        const footer = document.querySelector('footer');
-        const toogle = document.querySelector('.toogle');
-    </script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const players = Plyr.setup('.player', { controls });
+
+        const player = players[0]; // Get the first (or only) player instance
+        const videoElement = document.querySelector('.player');
+        let lastTapTime = 0; // Store last tap time
+
+        videoElement.addEventListener('touchend', (event) => {
+            const currentTime = new Date().getTime();
+            const tapGap = currentTime - lastTapTime;
+
+            if (tapGap < 300) { // Detect double-tap within 300ms
+                const clickX = event.changedTouches[0].clientX;
+                const videoWidth = videoElement.clientWidth;
+
+                if (clickX < videoWidth / 2) {
+                    // Double-tap on left side → Rewind 10 seconds
+                    player.currentTime = Math.max(0, player.currentTime - 10);
+                } else {
+                    // Double-tap on right side → Forward 10 seconds
+                    player.currentTime = Math.min(player.duration, player.currentTime + 10);
+                }
+            }
+            lastTapTime = currentTime;
+        });
+    });
+
+    const body = document.querySelector('body');
+    const footer = document.querySelector('footer');
+    const toogle = document.querySelector('.toogle');
+</script>
 </body>
 </html>
