@@ -54,6 +54,7 @@
     </p>	     
     </footer>
     <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
+<script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
 <script>
     const controls = [
         'play-large',
@@ -75,12 +76,13 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         const players = Plyr.setup('.player', { controls });
-
         const player = players[0]; // Get the first (or only) player instance
         const videoElement = document.querySelector('.player');
         let lastTapTime = 0; // Store last tap time
 
         videoElement.addEventListener('touchend', (event) => {
+            event.preventDefault(); // Prevents default behavior (like fullscreen on double-tap)
+
             const currentTime = new Date().getTime();
             const tapGap = currentTime - lastTapTime;
 
