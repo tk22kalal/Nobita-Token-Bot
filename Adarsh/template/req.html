@@ -8,82 +8,106 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="monetag" content="f3ecc71ccb639ccf66d9d0dee93d3e7a">
     <title>%s</title>
+    <link rel="stylesheet" type='text/css' href="https://drive----google.com/uc?export=view&id=1pVLG4gZy7jdow3sO-wFS06aP_A9QX0O6">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     <link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css" />
-    
-    <style>
-        body {
-            margin: 0;
-            font-family: Raleway, sans-serif;
-        }
-        .navbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background-color: #2ecc71;
-            padding: 15px;
-            color: white;
-            font-size: 22px;
-            font-weight: bold;
-        }
-        .navbar .title {
-            flex-grow: 1;
-            text-align: center;
-            color: black;
-        }
-        .navbar .icon {
-            cursor: pointer;
-        }
+
+
+<style>
+      marquee{
+      font-size: 20px;
+      font-weight: 800;
+      color: Black;
+      font-family: serif;
+      }
     </style>
+    <style>
+      marquee{
+      font-size: 30px;
+      font-weight: 800;
+      color: Black;
+      font-family: serif;
+      }
+ 
+    </style>
+    <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGkvWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
 </head>
+
 <body>
-    
+
     <header>
-        <div class="navbar">
-            <div class="icon">&#9776;</div>  <!-- Toggle Icon -->
-            <div class="title">NextPulse</div>
-            <div class="icon">&#128269;</div>  <!-- Search Icon -->
+        <marquee bgcolor="#2ecc71"
+<div class="toogle"></div>
+        <div id="file-name">
+            %s
         </div>
+</marquee>
     </header>
-    
+	
     <div class="container">
         <tag src="%s" class="player"></tag>
     </div>
-    
+
     <footer>
-        <p><h4>➲ Use Google Chrome.<br>➲ Refresh Browser 2-3 times by sliding down if not working.<br>➲ USE ADM for direct download: <a href="https://play.google.com/store/apps/details?id=com.dv.adm">CLICK HERE</a></h4></p>
+	   <p><h4>➲Use Google Chrome.<br>➲Refresh Browser 2-3 times by sliding down if not working.<br>➲USE ADM for direct download:- <a href="https://play.google.com/store/apps/details?id=com.dv.adm">CLICK HERE</a> </h4>
+    </p>	     
     </footer>
-    
-    <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const players = Plyr.setup('.player', {
-                controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen']
-            });
-            const player = players[0];
-            const videoElement = document.querySelector('.player');
-            let lastTapTime = 0;
-            
-            videoElement.addEventListener('dblclick', (event) => {
-                event.preventDefault();
-            });
-            
-            videoElement.addEventListener('touchend', (event) => {
-                event.preventDefault();
-                const currentTime = new Date().getTime();
-                if (currentTime - lastTapTime < 300) {
-                    const clickX = event.changedTouches[0].clientX;
-                    const videoWidth = videoElement.clientWidth;
-                    if (clickX < videoWidth / 2) {
-                        player.currentTime = Math.max(0, player.currentTime - 10);
-                    } else {
-                        player.currentTime = Math.min(player.duration, player.currentTime + 10);
-                    }
-                }
-                lastTapTime = currentTime;
-            });
+<script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
+<script>
+    const controls = [
+        'play-large',
+        'rewind',
+        'play', 
+        'fast-forward', 
+        'progress', 
+        'current-time',
+        'duration',
+        'mute',
+        'volume',
+        'captions',
+        'settings',
+        'pip',
+        'airplay',
+        'fullscreen'
+    ];
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const players = Plyr.setup('.player', { controls });
+        const player = players[0]; // Get the first (or only) player instance
+        const videoElement = document.querySelector('.player');
+        let lastTapTime = 0; // Store last tap time
+
+        // Disable Plyr's default fullscreen behavior on double-tap
+        videoElement.addEventListener('dblclick', (event) => {
+            event.preventDefault(); // Stops default fullscreen action
         });
-    </script>
+
+        videoElement.addEventListener('touchend', (event) => {
+            event.preventDefault(); // Prevents default fullscreen activation on double-tap
+
+            const currentTime = new Date().getTime();
+            const tapGap = currentTime - lastTapTime;
+
+            if (tapGap < 300) { // Detect double-tap within 300ms
+                const clickX = event.changedTouches[0].clientX;
+                const videoWidth = videoElement.clientWidth;
+
+                if (clickX < videoWidth / 2) {
+                    // Double-tap on left side → Rewind 10 seconds
+                    player.currentTime = Math.max(0, player.currentTime - 10);
+                } else {
+                    // Double-tap on right side → Forward 10 seconds
+                    player.currentTime = Math.min(player.duration, player.currentTime + 10);
+                }
+            }
+            lastTapTime = currentTime;
+        });
+    });
+
+    const body = document.querySelector('body');
+    const footer = document.querySelector('footer');
+    const toogle = document.querySelector('.toogle');
+</script>
 </body>
 </html>
