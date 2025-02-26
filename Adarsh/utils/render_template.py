@@ -44,7 +44,9 @@ async def render_page(id, secure_hash):
 
     </center>
 </p>
-    <center>Copyright © 2025 NEXTPULSE.<br>All Rights Reserved.</center>
+    <footer style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: #2ecc71; color: white; text-align: center; padding: 10px; font-size: 14px;">
+    Copyright © 2025 NEXTPULSE.<br>All Rights Reserved.
+</footer>
 '''
     html += html_code    
     return html
