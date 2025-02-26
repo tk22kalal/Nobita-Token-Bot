@@ -12,7 +12,6 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     <link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 
 
 <style>
@@ -21,28 +20,21 @@
             font-family: Raleway, sans-serif;
         }
 	.navbar {
-            background-color: #2ecc71;
-            color: white;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background-color: #2ecc71;
             padding: 15px;
-            font-size: 20px;
+            color: white;
+            font-size: 22px;
             font-weight: bold;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            z-index: 1000;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
         }
-        .navbar .logo {
-            color: black;
+        .navbar .title {
             flex-grow: 1;
             text-align: center;
+            color: black;
         }
         .navbar .icon {
-            color: white;
             cursor: pointer;
         }
       marquee{
@@ -57,6 +49,7 @@
 </head>
 
 <body>
+
     <header>
 	<div class="navbar">
             <div class="icon">&#9776;</div>  <!-- Toggle Icon -->
@@ -69,7 +62,8 @@
             %s
         </div>
 </marquee>
-    </header>	
+    </header>
+	
     <div class="container">
         <tag src="%s" class="player"></tag>
     </div>
