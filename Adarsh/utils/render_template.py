@@ -40,7 +40,7 @@ async def render_page(id, secure_hash):
     <p>
     <center>
     
-<button style="border: 0; padding: 0; width: 320px; height: 40px; font-size: 20px; background-color: #3498db; border: 0; border-radius: 0; border-bottom-left-radius: 5px; border-top-left-radius: 5px; border-bottom-right-radius: 5px; border-top-right-radius: 5px; padding: 0; color: white;" onclick="window.location.href = '{current_url}'">Download Now</button>
+<button style="border: 0; padding: 0; width: 320px; height: 40px; font-size: 20px; background-color: #2ecc71; border: 0; border-radius: 0; border-bottom-left-radius: 5px; border-top-left-radius: 5px; border-bottom-right-radius: 5px; border-top-right-radius: 5px; padding: 0; color: white;" onclick="window.location.href = '{current_url}'">Download Now</button>
 
     </center>
 </p>
