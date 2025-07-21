@@ -29,24 +29,7 @@ pass_dict = {}
 pass_db = Database(Var.DATABASE_URL, "ag_passwords")
 
 
-import openpyxl
-from io import BytesIO
-
-import os
-import re
-import json
-import asyncio
-from urllib.parse import quote_plus
-
-from pyrogram import Client, filters
-from pyrogram.types import Message
-from pyrogram.errors import FloodWait
-
-from config import Var
-from helpers.utils import get_message_id, get_messages, get_name, get_hash, encode, decode
-
-
-@Client.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
+@StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
 async def batch(client: Client, message: Message):
     Var.reset_batch()  # ✅ Reset per-batch file-to-FQDN mapping
 
