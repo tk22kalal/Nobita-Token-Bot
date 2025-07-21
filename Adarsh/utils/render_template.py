@@ -37,16 +37,7 @@ async def render_page(id, secure_hash):
     current_url = f'{Var.URL}/{str(id)}/{file_data.file_name}?hash={secure_hash}'
     html_code = f'''
     
-    <p>
-    <center>
-    
-<button style="border: 0; padding: 0; width: 320px; height: 40px; font-size: 20px; background-color: #2ecc71; border: 0; border-radius: 0; border-bottom-left-radius: 5px; border-top-left-radius: 5px; border-bottom-right-radius: 5px; border-top-right-radius: 5px; padding: 0; color: white;" onclick="window.location.href = '{current_url}'">Download Now</button>
-
-    </center>
-</p>
-    <footer style="position: relative; margin-top: 20px; background-color: #1b1b1b; color: #ccc; text-align: center; padding: 10px; font-size: 14px;">
-    Copyright © 2025 NEXTPULSE.<br>All Rights Reserved.
-</footer>
+    <p></p>
 '''
     html += html_code    
     return html
