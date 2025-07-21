@@ -33,8 +33,8 @@ class Var(object):
     else:
         ON_HEROKU = False
 
-    # List of available FQDNs (including "stream" + "stream1" to "stream25")
-    _FQDN_LIST = ["stream.nextpulse.workers.dev"] + [f"stream{i}.nextpulse.workers.dev" for i in range(1, 26)]
+    # List of available FQDNs (including "stream" + "stream1" to "stream10")
+    _FQDN_LIST = ["stream.nextpulse.workers.dev"] + [f"stream{i}.nextpulse.workers.dev" for i in range(1, 10)]
 
     @staticmethod
     def _get_random_fqdn():
