@@ -32,8 +32,24 @@ pass_db = Database(Var.DATABASE_URL, "ag_passwords")
 import openpyxl
 from io import BytesIO
 
-@StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
+import os
+import re
+import json
+import asyncio
+from urllib.parse import quote_plus
+
+from pyrogram import Client, filters
+from pyrogram.types import Message
+from pyrogram.errors import FloodWait
+
+from config import Var
+from helpers.utils import get_message_id, get_messages, get_name, get_hash, encode, decode
+
+
+@Client.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
 async def batch(client: Client, message: Message):
+    Var.reset_batch()  # ✅ Reset per-batch file-to-FQDN mapping
+
     while True:
         try:
             first_message = await client.ask(
@@ -111,8 +127,8 @@ async def batch(client: Client, message: Message):
             return        
 
         for msg in messages:
-            if bool(CUSTOM_CAPTION) and bool(msg.document):
-                caption = CUSTOM_CAPTION.format(
+            if bool(Var.CUSTOM_CAPTION) and bool(msg.document):
+                caption = Var.CUSTOM_CAPTION.format(
                     previouscaption=msg.caption.html if msg.caption else "",
                     filename=msg.document.file_name
                 )
@@ -125,7 +141,12 @@ async def batch(client: Client, message: Message):
             try:
                 log_msg = await msg.copy(chat_id=Var.BIN_CHANNEL)
                 await asyncio.sleep(0.5)
-                stream_link = f"{Var.URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
+
+                # ✅ Use consistent FQDN per file
+                fqdn_url = Var.get_url_for_file(str(log_msg.id))
+
+                stream_link = f"{fqdn_url}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
+
                 json_output.append({
                     "title": caption,
                     "streamingUrl": stream_link
@@ -135,18 +156,15 @@ async def batch(client: Client, message: Message):
                 print(f"Sleeping for {str(e.x)}s")
                 await asyncio.sleep(e.x)
 
-    # Save JSON to file
     filename = f"/tmp/batch_output_{message.from_user.id}.json"
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(json_output, f, indent=4, ensure_ascii=False)
 
-    # Send file to user
     await client.send_document(
         chat_id=message.chat.id,
         document=filename,
         caption="✅ Batch JSON created successfully.",
     )
-
 
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
 async def private_receive_handler(c: Client, m: Message):
