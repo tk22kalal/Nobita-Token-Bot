@@ -42,6 +42,10 @@ class Var(object):
     # ✅ Per-file mapping: file_id/message_id → fqdn
     _file_fqdn_map = {}
 
+    # ✅ Default FQDN/URL for legacy usage
+    FQDN = random.choice(_FQDN_LIST)
+    URL = f"https://{FQDN}/"
+
     @classmethod
     def get_fqdn_for_file(cls, file_id: str) -> str:
         """Returns consistent random FQDN for a file_id within batch."""
