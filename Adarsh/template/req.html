@@ -7,29 +7,19 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="monetag" content="f3ecc71ccb639ccf66d9d0dee93d3e7a">
-    <title>%s</title>
+    <title>{{ file_name }}</title>
     <link rel="stylesheet" type='text/css' href="https://drive----google.com/uc?export=view&id=1pVLG4gZy7jdow3sO-wFS06aP_A9QX0O6">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     <link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css" />
 
-
-<style>
-      marquee{
-      font-size: 20px;
-      font-weight: 800;
-      color: Black;
-      font-family: serif;
-      }
-    </style>
     <style>
-      marquee{
-      font-size: 30px;
-      font-weight: 800;
-      color: Black;
-      font-family: serif;
-      }
- 
+        marquee {
+            font-size: 30px;
+            font-weight: 800;
+            color: Black;
+            font-family: serif;
+        }
     </style>
     <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGkvWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
 </head>
@@ -37,38 +27,25 @@
 <body>
 
     <header>
-        <marquee bgcolor="#fff"
-<div class="toogle"></div>
-        <div id="file-name">
-            %s
-        </div>
-</marquee>
+        <marquee bgcolor="#fff">
+            <div class="toogle"></div>
+            <div id="file-name">
+                {{ file_name }}
+            </div>
+        </marquee>
     </header>
-	
+
     <div class="container">
-        <tag src="%s" class="player"></tag>
+        <{{ tag }} src="{{ file_url }}" class="player"></{{ tag }}>
     </div>
 
-   
     <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
-	<script>
+    <script>
         const controls = [
-              'play-large',
-              'rewind',
-              'play', 
-              'fast-forward', 
-              'progress', 
-              'current-time',
-              'duration',
-              'mute',
-              'volume',
-              'captions',
-              'settings',
-              'pip',
-              'airplay',
-              'download',
-              'fullscreen'
-            ];
+            'play-large', 'rewind', 'play', 'fast-forward', 'progress',
+            'current-time', 'duration', 'mute', 'volume', 'captions',
+            'settings', 'pip', 'airplay', 'download', 'fullscreen'
+        ];
         document.addEventListener('DOMContentLoaded', () => {
             const player = Plyr.setup('.player', { controls });
         });
