@@ -33,24 +33,33 @@ class Var(object):
     else:
         ON_HEROKU = False
 
-    _FQDN_LIST = ["stream.nextpulse.workers.dev"] + [f"stream{i}.nextpulse.workers.dev" for i in range(1, 10)]
-
+    _FQDN_LIST = [f"stream{i}.nextpulse.workers.dev" for i in range(1, 11)]
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
     BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split() if x.isdigit()))
 
-    # ✅ Per-file mapping: file_id/message_id → fqdn
-    _file_fqdn_map = {}
+    _file_fqdn_map = {}  # file_id -> fqdn
+    _current_fqdn = random.choice(_FQDN_LIST)
+    _current_repeat = 0
 
-    # ✅ Default FQDN/URL for legacy usage
-    FQDN = random.choice(_FQDN_LIST)
+    # Default (not important now)
+    FQDN = _current_fqdn
     URL = f"https://{FQDN}/"
 
     @classmethod
     def get_fqdn_for_file(cls, file_id: str) -> str:
-        """Returns consistent random FQDN for a file_id within batch."""
         if file_id not in cls._file_fqdn_map:
-            cls._file_fqdn_map[file_id] = random.choice(cls._FQDN_LIST)
+            # If 2 requests already used current, pick a new one
+            if cls._current_repeat >= 2:
+                new_fqdn = random.choice(cls._FQDN_LIST)
+                while new_fqdn == cls._current_fqdn:
+                    new_fqdn = random.choice(cls._FQDN_LIST)
+                cls._current_fqdn = new_fqdn
+                cls._current_repeat = 0
+
+            cls._file_fqdn_map[file_id] = cls._current_fqdn
+            cls._current_repeat += 1
+
         return cls._file_fqdn_map[file_id]
 
     @classmethod
@@ -59,9 +68,9 @@ class Var(object):
 
     @classmethod
     def reset_batch(cls):
-        """Call this before starting a new batch to clear file-to-stream mapping."""
-        cls._file_fqdn_map.clear()
+        # Not needed now, but keeping it in case of legacy code
+        pass
 
 
-# Instantiate
+# Instantiate the config object
 Var = Var()
