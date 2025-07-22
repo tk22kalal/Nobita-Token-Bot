@@ -57,10 +57,13 @@ def get_name(media_msg: Message) -> str:
     if file_name:
         return file_name
     elif media_msg.caption:
-        return media_msg.caption.html
+        # Clean the caption: remove URLs, @words, and #words
+        caption = media_msg.caption.html
+        caption = re.sub(r'(https?://\S+|@\w+|#\w+)', '', caption)
+        caption = re.sub(r'\s+', ' ', caption.strip())
+        return caption
     else:
         return "NEXTPULSE"
-
         
 def get_media_file_size(m):
     media = get_media_from_message(m)
