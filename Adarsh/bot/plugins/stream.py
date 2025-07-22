@@ -117,10 +117,11 @@ async def batch(client: Client, message: Message):
                 )
             else:
                 caption = msg.caption.html if msg.caption else ""
-
-            caption = re.sub(r'@[\w_]+|http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', caption)
+            
+            # Remove URLs, @words, and #words
+            caption = re.sub(r'(https?://\S+|@\w+|#\w+)', '', caption)
             caption = re.sub(r'\s+', ' ', caption.strip())
-
+            
             try:
                 log_msg = await msg.copy(chat_id=Var.BIN_CHANNEL)
                 await asyncio.sleep(0.5)
