@@ -31,7 +31,7 @@ pass_db = Database(Var.DATABASE_URL, "ag_passwords")
 
 @StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
 async def batch(client: Client, message: Message):
-    Var.reset_batch()  # ✅ Reset per-batch file-to-FQDN mapping
+    Var.reset_batch()  # Reset per-batch FQDN mapping
 
     while True:
         try:
@@ -45,17 +45,16 @@ async def batch(client: Client, message: Message):
             return
 
         f_msg_id = await get_message_id(client, first_message)
-
         if f_msg_id:
             break
         else:
-            await first_message.reply("❌ Error\n\nThis Forwarded Post is not from my DB Channel or the link is invalid.")
+            await first_message.reply("❌ Error\n\nInvalid Forward or Link. Try again.")
             continue
 
     while True:
         try:
             second_message = await client.ask(
-                text="Forward the Last Message from DB Channel (with Quotes)..\nor Send the DB Channel Post link",
+                text="Forward the Last Message from DB Channel (with Quotes)..\n\nor Send the DB Channel Post Link",
                 chat_id=message.from_user.id,
                 filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
                 timeout=60
@@ -64,11 +63,10 @@ async def batch(client: Client, message: Message):
             return
 
         s_msg_id = await get_message_id(client, second_message)
-
         if s_msg_id:
             break
         else:
-            await second_message.reply("❌ Error\n\nThis Forwarded Post is not from my DB Channel or the link is invalid.")
+            await second_message.reply("❌ Error\n\nInvalid Forward or Link. Try again.")
             continue
 
     message_links = []
@@ -79,14 +77,15 @@ async def batch(client: Client, message: Message):
         message_links.append(link)
 
     json_output = []
+    status_msg = await message.reply_text(f"🚀 Starting batch processing...\nTotal: {len(message_links)} messages.")
 
-    for link in message_links:
+    for index, link in enumerate(message_links):
         try:
             base64_string = link.split("=", 1)[1]
             decoded_string = await decode(base64_string)
         except Exception as e:
-            print(f"Error decoding link: {e}")
-            return
+            print(f"Decoding error: {e}")
+            continue
 
         argument = decoded_string.split("-")
         if len(argument) == 3:
@@ -94,22 +93,24 @@ async def batch(client: Client, message: Message):
                 start = int(int(argument[1]) / abs(client.db_channel))
                 end = int(int(argument[2]) / abs(client.db_channel))
             except:
-                return
+                continue
             ids = list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
         elif len(argument) == 2:
             try:
                 ids = [int(int(argument[1]) / abs(client.db_channel))]
             except:
-                return
+                continue
+        else:
+            continue
 
         try:
             messages = await get_messages(client, ids)
         except Exception as e:
-            print(f"Error fetching messages: {e}")
-            await message.reply_text("Something went wrong while fetching messages.")
-            return        
+            print(f"Fetching message failed: {e}")
+            continue
 
         for msg in messages:
+            # Prepare caption
             if bool(Var.CUSTOM_CAPTION) and bool(msg.document):
                 caption = Var.CUSTOM_CAPTION.format(
                     previouscaption=msg.caption.html if msg.caption else "",
@@ -117,28 +118,34 @@ async def batch(client: Client, message: Message):
                 )
             else:
                 caption = msg.caption.html if msg.caption else ""
-            
-            # Remove URLs, @words, and #words
+
+            # Clean up caption
             caption = re.sub(r'(https?://\S+|@\w+|#\w+)', '', caption)
             caption = re.sub(r'\s+', ' ', caption.strip())
-            
-            try:
-                log_msg = await msg.copy(chat_id=Var.BIN_CHANNEL)
-                await asyncio.sleep(0.5)
 
-                # ✅ Use consistent FQDN per file
-                fqdn_url = Var.get_url_for_file(str(log_msg.id))
+            # Copy with FloodWait retry (DON'T SKIP)
+            while True:
+                try:
+                    log_msg = await msg.copy(chat_id=Var.BIN_CHANNEL)
+                    break
+                except FloodWait as e:
+                    print(f"FloodWait: sleeping for {e.x} seconds")
+                    await status_msg.edit_text(f"⏳ FloodWait: sleeping {e.x}s for message {index + 1}/{len(message_links)}...")
+                    await asyncio.sleep(e.x)
+                except Exception as e:
+                    print(f"Unexpected error copying message: {e}")
+                    break
 
-                stream_link = f"{fqdn_url}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
+            fqdn_url = Var.get_url_for_file(str(log_msg.id))
+            stream_link = f"{fqdn_url}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
 
-                json_output.append({
-                    "title": caption,
-                    "streamingUrl": stream_link
-                })
+            json_output.append({
+                "title": caption,
+                "streamingUrl": stream_link
+            })
 
-            except FloodWait as e:
-                print(f"Sleeping for {str(e.x)}s")
-                await asyncio.sleep(e.x)
+        # Update progress
+        await status_msg.edit_text(f"✅ Processed {index + 1}/{len(message_links)} messages...")
 
     filename = f"/tmp/batch_output_{message.from_user.id}.json"
     with open(filename, "w", encoding="utf-8") as f:
@@ -149,6 +156,7 @@ async def batch(client: Client, message: Message):
         document=filename,
         caption="✅ Batch JSON created successfully.",
     )
+    await status_msg.edit_text("🎉 All messages processed and file sent!")
 
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
 async def private_receive_handler(c: Client, m: Message):
