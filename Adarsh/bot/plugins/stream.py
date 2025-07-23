@@ -2,7 +2,6 @@ import re
 import os
 import asyncio
 import json
-from asyncio import TimeoutError
 from Adarsh.bot import StreamBot
 from Adarsh.utils.database import Database
 from Adarsh.utils.human_readable import humanbytes
@@ -10,153 +9,172 @@ from Adarsh.vars import Var
 from urllib.parse import quote_plus
 from pyrogram import filters, Client
 from pyrogram.enums import ParseMode
-from pyrogram.errors import FloodWait, UserNotParticipant
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from telethon.tl.types import InputPeerChannel
-from Adarsh.utils.file_properties import get_name, get_hash, get_media_file_size
-db = Database(Var.DATABASE_URL, Var.name)
+from pyrogram.errors import FloodWait
+from pyrogram.types import Message
+from Adarsh.utils.file_properties import get_name, get_hash
 from helper_func import encode, get_message_id, decode, get_messages
 
+db = Database(Var.DATABASE_URL, Var.name)
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
-#set True if you want to prevent users from forwarding files from bot
-PROTECT_CONTENT = True if os.environ.get('PROTECT_CONTENT', "False") == "True" else False
-
-#Set true if you want Disable your Channel Posts Share button
+PROTECT_CONTENT = os.environ.get('PROTECT_CONTENT', "False") == "True"
 DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True'
 
-MY_PASS = os.environ.get("MY_PASS", None)
-pass_dict = {}
-pass_db = Database(Var.DATABASE_URL, "ag_passwords")
-
+async def process_message(msg, json_output, skipped_messages):
+    """Process individual message and add to output with enhanced error handling"""
+    try:
+        # Validate media content
+        if not (msg.document or msg.video or msg.audio):
+            raise ValueError("No media content found in message")
+        
+        # Prepare caption with fallbacks
+        if msg.caption:
+            caption = msg.caption.html
+            # Clean caption: remove URLs, mentions, hashtags and extra spaces
+            caption = re.sub(r'(https?://\S+|@\w+|#\w+)', '', caption)
+            caption = re.sub(r'\s+', ' ', caption).strip()
+        else:
+            # Fallback to filename if no caption
+            caption = get_name(msg) or "NEXTPULSE"
+        
+        # Copy message to bin channel with FloodWait handling
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                log_msg = await msg.copy(
+                    chat_id=Var.BIN_CHANNEL,
+                    caption=caption[:1024],  # Ensure caption length limit
+                    parse_mode=ParseMode.HTML
+                )
+                break
+            except FloodWait as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(e.x)
+                else:
+                    raise
+        else:
+            raise Exception("Max retries exceeded for FloodWait")
+        
+        # Generate streaming URL
+        file_name = get_name(log_msg) or "NEXTPULSE"
+        file_hash = get_hash(log_msg)
+        fqdn_url = Var.get_url_for_file(str(log_msg.id))
+        stream_link = f"{fqdn_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
+        
+        # Add to successful output (same format as before)
+        json_output.append({
+            "title": caption,
+            "streamingUrl": stream_link
+        })
+        
+    except Exception as e:
+        # Capture details for skipped messages
+        file_name = get_name(msg) or "Unknown"
+        skipped_messages.append({
+            "id": msg.id,
+            "file_name": file_name,
+            "reason": str(e)
+        })
 
 @StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
 async def batch(client: Client, message: Message):
-    Var.reset_batch()  # Reset per-batch FQDN mapping
-
-    while True:
-        try:
-            first_message = await client.ask(
-                text="Forward the First Message from DB Channel (with Quotes)..\n\nor Send the DB Channel Post Link",
-                chat_id=message.from_user.id,
-                filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
-                timeout=60
-            )
-        except:
-            return
-
-        f_msg_id = await get_message_id(client, first_message)
-        if f_msg_id:
-            break
-        else:
-            await first_message.reply("❌ Error\n\nInvalid Forward or Link. Try again.")
-            continue
-
-    while True:
-        try:
-            second_message = await client.ask(
-                text="Forward the Last Message from DB Channel (with Quotes)..\n\nor Send the DB Channel Post Link",
-                chat_id=message.from_user.id,
-                filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
-                timeout=60
-            )
-        except:
-            return
-
-        s_msg_id = await get_message_id(client, second_message)
-        if s_msg_id:
-            break
-        else:
-            await second_message.reply("❌ Error\n\nInvalid Forward or Link. Try again.")
-            continue
-
-    message_links = []
-    for msg_id in range(min(f_msg_id, s_msg_id), max(f_msg_id, s_msg_id) + 1):
-        string = f"get-{msg_id * abs(client.db_channel)}"
-        base64_string = await encode(string)
-        link = f"https://t.me/{client.username}?start={base64_string}"
-        message_links.append(link)
-
+    Var.reset_batch()
     json_output = []
-    status_msg = await message.reply_text(f"🚀 Starting batch processing...\nTotal: {len(message_links)} messages.")
+    skipped_messages = []
 
-    for index, link in enumerate(message_links):
+    # Get first and last messages
+    try:
+        first_message = await client.ask(
+            text="Forward the First Message from DB Channel (with Quotes)..\n\nor Send the DB Channel Post Link",
+            chat_id=message.from_user.id,
+            filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
+            timeout=60
+        )
+        f_msg_id = await get_message_id(client, first_message)
+        if not f_msg_id:
+            await first_message.reply("❌ Error\n\nInvalid Forward or Link. Try again.")
+            return
+
+        second_message = await client.ask(
+            text="Forward the Last Message from DB Channel (with Quotes)..\n\nor Send the DB Channel Post Link",
+            chat_id=message.from_user.id,
+            filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
+            timeout=60
+        )
+        s_msg_id = await get_message_id(client, second_message)
+        if not s_msg_id:
+            await second_message.reply("❌ Error\n\nInvalid Forward or Link. Try again.")
+            return
+    except Exception as e:
+        await message.reply(f"❌ Setup Error: {str(e)}")
+        return
+
+    # Determine message range
+    start_id = min(f_msg_id, s_msg_id)
+    end_id = max(f_msg_id, s_msg_id)
+    total_messages = end_id - start_id + 1
+    status_msg = await message.reply_text(f"🚀 Starting batch processing...\nTotal: {total_messages} messages")
+    
+    # Process messages in batches
+    batch_size = 50
+    processed_count = 0
+    
+    for batch_start in range(start_id, end_id + 1, batch_size):
+        batch_end = min(batch_start + batch_size - 1, end_id)
+        msg_ids = list(range(batch_start, batch_end + 1))
+        
         try:
-            base64_string = link.split("=", 1)[1]
-            decoded_string = await decode(base64_string)
+            messages = await get_messages(client, msg_ids)
         except Exception as e:
-            print(f"Decoding error: {e}")
-            continue
-
-        argument = decoded_string.split("-")
-        if len(argument) == 3:
-            try:
-                start = int(int(argument[1]) / abs(client.db_channel))
-                end = int(int(argument[2]) / abs(client.db_channel))
-            except:
-                continue
-            ids = list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
-        elif len(argument) == 2:
-            try:
-                ids = [int(int(argument[1]) / abs(client.db_channel))]
-            except:
-                continue
-        else:
-            continue
-
-        try:
-            messages = await get_messages(client, ids)
-        except Exception as e:
-            print(f"Fetching message failed: {e}")
-            continue
-
-        for msg in messages:
-            # Prepare caption
-            if bool(Var.CUSTOM_CAPTION) and bool(msg.document):
-                caption = Var.CUSTOM_CAPTION.format(
-                    previouscaption=msg.caption.html if msg.caption else "",
-                    filename=msg.document.file_name
-                )
-            else:
-                caption = msg.caption.html if msg.caption else ""
-
-            # Clean up caption
-            caption = re.sub(r'(https?://\S+|@\w+|#\w+)', '', caption)
-            caption = re.sub(r'\s+', ' ', caption.strip())
-
-            # Copy with FloodWait retry (DON'T SKIP)
-            while True:
+            messages = []
+            # If batch fetch fails, get messages individually
+            for msg_id in msg_ids:
                 try:
-                    log_msg = await msg.copy(chat_id=Var.BIN_CHANNEL)
-                    break
-                except FloodWait as e:
-                    print(f"FloodWait: sleeping for {e.x} seconds")
-                    await status_msg.edit_text(f"⏳ FloodWait: sleeping {e.x}s for message {index + 1}/{len(message_links)}...")
-                    await asyncio.sleep(e.x)
-                except Exception as e:
-                    print(f"Unexpected error copying message: {e}")
-                    break
+                    msg = (await get_messages(client, [msg_id]))[0]
+                    messages.append(msg)
+                except:
+                    messages.append(None)
+        
+        for msg in messages:
+            processed_count += 1
+            if not msg:
+                skipped_messages.append({
+                    "id": msg_ids[messages.index(msg)] if msg in messages else "Unknown",
+                    "file_name": "Unknown",
+                    "reason": "Message not found"
+                })
+                continue
+                
+            await process_message(msg, json_output, skipped_messages)
+            if processed_count % 10 == 0:
+                await status_msg.edit_text(
+                    f"🔄 Processing...\n"
+                    f"Progress: {processed_count}/{total_messages}\n"
+                    f"Success: {len(json_output)} | Skipped: {len(skipped_messages)}"
+                )
 
-            fqdn_url = Var.get_url_for_file(str(log_msg.id))
-            stream_link = f"{fqdn_url}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-
-            json_output.append({
-                "title": caption,
-                "streamingUrl": stream_link
-            })
-
-        # Update progress
-        await status_msg.edit_text(f"✅ Processed {index + 1}/{len(message_links)} messages...")
-
+    # Prepare final output
+    output_data = {
+        "successful": json_output,  # Same format as before
+        "skipped": skipped_messages  # Separate section for errors
+    }
+    
+    # Save to file
     filename = f"/tmp/batch_output_{message.from_user.id}.json"
     with open(filename, "w", encoding="utf-8") as f:
-        json.dump(json_output, f, indent=4, ensure_ascii=False)
+        json.dump(output_data, f, indent=4, ensure_ascii=False)
 
+    # Send results
     await client.send_document(
         chat_id=message.chat.id,
         document=filename,
-        caption="✅ Batch JSON created successfully.",
+        caption=f"✅ Batch processing complete!\n"
+                f"Total: {total_messages} | "
+                f"Success: {len(json_output)} | "
+                f"Skipped: {len(skipped_messages)}"
     )
-    await status_msg.edit_text("🎉 All messages processed and file sent!")
+    await status_msg.delete()
+    os.remove(filename)
+
 
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
 async def private_receive_handler(c: Client, m: Message):
