@@ -17,6 +17,11 @@ from Adarsh.vars import Var
 
 routes = web.RouteTableDef()
 
+@routes.get("/favicon.ico")
+async def favicon_handler(_):
+    return web.Response(status=204)
+
+
 @routes.get("/", allow_head=True)
 async def root_route_handler(_):
     return web.json_response(
