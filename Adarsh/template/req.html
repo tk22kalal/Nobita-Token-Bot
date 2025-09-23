@@ -1,4 +1,3 @@
-<!--(c) NobiDeveloper-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,13 +11,156 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     <link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css" />
-
+    
+    <!-- HLS.js for adaptive streaming -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    
     <style>
         marquee {
             font-size: 30px;
             font-weight: 800;
             color: Black;
             font-family: serif;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .player-container {
+            position: relative;
+            width: 100%;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            color: white;
+            font-size: 18px;
+            flex-direction: column;
+            display: none;
+        }
+        
+        .retry-button {
+            background: #ff5722;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin-top: 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        
+        .retry-button:hover {
+            background: #e64a19;
+        }
+        
+        .quality-selector {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 5;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        .quality-selector select {
+            background: transparent;
+            border: 1px solid #555;
+            color: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        
+        .buffer-indicator {
+            position: absolute;
+            bottom: 60px;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            z-index: 5;
+            display: none;
+        }
+        
+        .buffer-progress {
+            height: 100%;
+            background: #ff5722;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        /* Plyr customizations */
+        .plyr {
+            border-radius: 8px;
+            font-family: 'Raleway', 'Delius', sans-serif;
+        }
+        
+        .plyr--video {
+            border-radius: 8px;
+        }
+        
+        .plyr__controls {
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+        }
+        
+        .plyr__progress__buffer {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .plyr--fullscreen-active .player-container {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Custom progress bar styling */
+        .plyr__progress input[type="range"] {
+            z-index: 6;
+        }
+        
+        /* Network status indicator */
+        .network-status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 5;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            display: none;
+        }
+        
+        .network-status.good {
+            background: rgba(76, 175, 80, 0.7);
+        }
+        
+        .network-status.average {
+            background: rgba(255, 152, 0, 0.7);
+        }
+        
+        .network-status.poor {
+            background: rgba(244, 67, 54, 0.7);
         }
     </style>
     <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGkvWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
@@ -36,20 +178,535 @@
     </header>
 
     <div class="container">
-        <{{ tag }} src="{{ file_url }}" class="player"></{{ tag }}>
+        <div class="player-container">
+            <!-- Loading and error overlay -->
+            <div class="loading-overlay" id="loading-overlay">
+                <div id="loading-text">Loading video...</div>
+                <div id="retry-info" style="margin-top: 10px; font-size: 14px;">Retry: <span id="retry-count">0</span>/5</div>
+                <button class="retry-button" id="retry-button" style="display: none;">Retry Playback</button>
+            </div>
+            
+            <!-- Network status indicator -->
+            <div class="network-status" id="network-status">Network: Good</div>
+            
+            <!-- Quality selector for HLS -->
+            <div class="quality-selector" id="quality-selector">
+                <select id="quality-select">
+                    <option value="auto">Auto Quality</option>
+                </select>
+            </div>
+            
+            <!-- Buffer indicator -->
+            <div class="buffer-indicator" id="buffer-indicator">
+                <div class="buffer-progress" id="buffer-progress"></div>
+            </div>
+            
+            <!-- The video player -->
+            <{{ tag }} 
+                src="{{ file_url }}" 
+                class="player" 
+                id="video-player"
+                preload="auto"
+                poster="https://graph.org/file/5e6d18610741226005e6e.jpg"
+                crossorigin="anonymous"
+            ></{{ tag }}>
+        </div>
     </div>
 
     <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
     <script>
+        // Configuration
+        const MAX_RETRIES = 5;
+        const RETRY_DELAY = 3000; // 3 seconds
+        const BUFFER_TARGET = 15; // seconds of video to buffer
+        let retryCount = 0;
+        let isHLS = false;
+        let hlsPlayer = null;
+        let player = null;
+        let networkMonitorInterval = null;
+        
+        // DOM elements
+        const videoPlayer = document.getElementById('video-player');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+        const retryInfo = document.getElementById('retry-info');
+        const retryButton = document.getElementById('retry-button');
+        const retryCountSpan = document.getElementById('retry-count');
+        const qualitySelector = document.getElementById('quality-selector');
+        const qualitySelect = document.getElementById('quality-select');
+        const bufferIndicator = document.getElementById('buffer-indicator');
+        const bufferProgress = document.getElementById('buffer-progress');
+        const networkStatus = document.getElementById('network-status');
+        
+        // Enhanced Plyr controls
         const controls = [
-            'play-large', 'rewind', 'play', 'fast-forward', 'progress',
-            'current-time', 'duration', 'mute', 'volume', 'captions',
-            'settings', 'pip', 'airplay', 'fullscreen'
+            'play-large', 
+            'rewind', 
+            'play',
+            'fast-forward',
+            'progress',
+            'current-time',
+            'settings',
+            'pip',
+            'fullscreen'
         ];
-        document.addEventListener('DOMContentLoaded', () => {
-            const player = Plyr.setup('.player', { controls });
+        
+        // Show loading overlay
+        function showLoading(message = "Loading video...") {
+            loadingText.textContent = message;
+            loadingOverlay.style.display = 'flex';
+            retryButton.style.display = 'none';
+            retryCountSpan.textContent = retryCount;
+        }
+        
+        // Hide loading overlay
+        function hideLoading() {
+            loadingOverlay.style.display = 'none';
+        }
+        
+        // Show error with retry button
+        function showError(message = "Failed to load video") {
+            loadingText.textContent = message;
+            retryButton.style.display = 'block';
+        }
+        
+        // Update buffer indicator
+        function updateBufferIndicator() {
+            if (videoPlayer.buffered.length > 0 && videoPlayer.duration) {
+                const bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
+                const currentTime = videoPlayer.currentTime;
+                const bufferedTime = bufferedEnd - currentTime;
+                
+                if (bufferedTime > 0) {
+                    // Show buffer indicator if we have less than 5 seconds buffered
+                    if (bufferedTime < 5 && !videoPlayer.paused) {
+                        bufferIndicator.style.display = 'block';
+                        const percent = (bufferedTime / 5) * 100;
+                        bufferProgress.style.width = Math.min(percent, 100) + '%';
+                    } else {
+                        bufferIndicator.style.display = 'none';
+                    }
+                } else {
+                    bufferIndicator.style.display = 'none';
+                }
+            } else {
+                bufferIndicator.style.display = 'none';
+            }
+        }
+        
+        // Monitor network conditions
+        function startNetworkMonitoring() {
+            if (networkMonitorInterval) clearInterval(networkMonitorInterval);
+            
+            networkMonitorInterval = setInterval(() => {
+                if ('connection' in navigator) {
+                    const connection = navigator.connection;
+                    if (connection) {
+                        let statusText = 'Network: ';
+                        let statusClass = 'good';
+                        
+                        if (connection.downlink < 1) {
+                            statusText += 'Poor';
+                            statusClass = 'poor';
+                        } else if (connection.downlink < 2.5) {
+                            statusText += 'Average';
+                            statusClass = 'average';
+                        } else {
+                            statusText += 'Good';
+                            statusClass = 'good';
+                        }
+                        
+                        statusText += ` (${connection.downlink.toFixed(1)} Mbps)`;
+                        networkStatus.textContent = statusText;
+                        networkStatus.className = `network-status ${statusClass}`;
+                        networkStatus.style.display = 'block';
+                    }
+                }
+            }, 5000);
+        }
+        
+        // Stop network monitoring
+        function stopNetworkMonitoring() {
+            if (networkMonitorInterval) {
+                clearInterval(networkMonitorInterval);
+                networkMonitorInterval = null;
+            }
+            networkStatus.style.display = 'none';
+        }
+        
+        // Initialize HLS.js if needed
+        function initHLS() {
+            const videoSrc = videoPlayer.getAttribute('src');
+            
+            // Check if this is an HLS stream
+            if (videoSrc && (videoSrc.endsWith('.m3u8') || videoSrc.includes('m3u8'))) {
+                isHLS = true;
+                
+                if (Hls.isSupported()) {
+                    hlsPlayer = new Hls({
+                        enableWorker: true,
+                        lowLatencyMode: true,
+                        backBufferLength: 90,
+                        maxBufferLength: 30,
+                        maxMaxBufferLength: 60,
+                        maxBufferSize: 60 * 1000 * 1000, // 60MB
+                        maxBufferHole: 0.5,
+                        highBufferWatchdogPeriod: 2,
+                        nudgeOffset: 0.1,
+                        nudgeMaxRetry: 3,
+                        maxFragLookUpTolerance: 0.2,
+                        liveSyncDurationCount: 3,
+                        liveMaxLatencyDurationCount: 10,
+                        enableSoftwareAES: true,
+                        manifestLoadingTimeOut: 10000,
+                        manifestLoadingMaxRetry: 3,
+                        manifestLoadingRetryDelay: 500,
+                        levelLoadingTimeOut: 10000,
+                        levelLoadingMaxRetry: 3,
+                        levelLoadingRetryDelay: 500,
+                        fragLoadingTimeOut: 20000,
+                        fragLoadingMaxRetry: 6,
+                        fragLoadingRetryDelay: 500,
+                    });
+                    
+                    // Bind HLS.js to the video element
+                    hlsPlayer.loadSource(videoSrc);
+                    hlsPlayer.attachMedia(videoPlayer);
+                    
+                    // Set up quality selector when levels are available
+                    hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+                        // Show quality selector if multiple levels available
+                        if (data.levels.length > 1) {
+                            qualitySelector.style.display = 'block';
+                            qualitySelect.innerHTML = '<option value="auto">Auto Quality</option>';
+                            
+                            data.levels.forEach((level, index) => {
+                                const option = document.createElement('option');
+                                option.value = index;
+                                option.textContent = level.height + 'p';
+                                qualitySelect.appendChild(option);
+                            });
+                        }
+                        
+                        // Hide loading once manifest is parsed
+                        hideLoading();
+                    });
+                    
+                    // Handle quality change
+                    qualitySelect.addEventListener('change', function() {
+                        if (this.value === 'auto') {
+                            hlsPlayer.currentLevel = -1; // Auto quality
+                        } else {
+                            hlsPlayer.currentLevel = parseInt(this.value);
+                        }
+                    });
+                    
+                    // HLS error handling
+                    hlsPlayer.on(Hls.Events.ERROR, function(event, data) {
+                        console.error('HLS Error:', data);
+                        
+                        if (data.fatal) {
+                            switch(data.type) {
+                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                    // Try to recover network error
+                                    if (retryCount < MAX_RETRIES) {
+                                        retryCount++;
+                                        showLoading(`Network error. Retrying... (${retryCount}/${MAX_RETRIES})`);
+                                        setTimeout(() => hlsPlayer.startLoad(), RETRY_DELAY);
+                                    } else {
+                                        showError("Network error: Unable to load video after multiple attempts");
+                                    }
+                                    break;
+                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                    showLoading("Recovering media error...");
+                                    hlsPlayer.recoverMediaError();
+                                    break;
+                                default:
+                                    // Cannot recover
+                                    showError("Fatal error: Cannot play video");
+                                    hlsPlayer.destroy();
+                                    break;
+                            }
+                        }
+                    });
+                    
+                    // HLS events for buffering
+                    hlsPlayer.on(Hls.Events.BUFFER_APPENDING, function() {
+                        updateBufferIndicator();
+                    });
+                    
+                    hlsPlayer.on(Hls.Events.BUFFER_APPENDED, function() {
+                        updateBufferIndicator();
+                    });
+                    
+                    return true;
+                } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                    // Native HLS support (Safari)
+                    videoPlayer.src = videoSrc;
+                    isHLS = true;
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+        
+        // Standard HTML5 video error handling
+        function setupHTML5Video() {
+            videoPlayer.addEventListener('error', function() {
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    showLoading(`Error loading video. Retrying... (${retryCount}/${MAX_RETRIES})`);
+                    
+                    setTimeout(function() {
+                        // Create a new source to force reload
+                        const currentTime = videoPlayer.currentTime;
+                        videoPlayer.src = videoPlayer.src + '?retry=' + Date.now();
+                        videoPlayer.load();
+                        
+                        if (currentTime > 0) {
+                            videoPlayer.currentTime = currentTime;
+                        }
+                        
+                        videoPlayer.play().catch(e => {
+                            console.log('Autoplay prevented');
+                        });
+                    }, RETRY_DELAY);
+                } else {
+                    showError("Failed to load video after multiple attempts");
+                }
+            });
+            
+            videoPlayer.addEventListener('waiting', function() {
+                showLoading("Buffering...");
+                updateBufferIndicator();
+            });
+            
+            videoPlayer.addEventListener('canplay', function() {
+                hideLoading();
+                updateBufferIndicator();
+            });
+            
+            videoPlayer.addEventListener('playing', function() {
+                hideLoading();
+                updateBufferIndicator();
+            });
+            
+            // Update buffer indicator periodically
+            setInterval(updateBufferIndicator, 500);
+        }
+        
+        // Initialize the player
+        function initPlayer() {
+            showLoading();
+            startNetworkMonitoring();
+            
+            // Try to initialize HLS first
+            if (!initHLS()) {
+                // Fallback to standard HTML5 video
+                setupHTML5Video();
+            }
+            
+            // Initialize Plyr player
+            player = new Plyr(videoPlayer, {
+                controls: controls,
+                settings: ['captions', 'quality', 'speed', 'loop'],
+                speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
+                quality: {
+                    default: 720,
+                    options: [4320, 2880, 2160, 1440, 1080, 720, 576, 480, 360, 240],
+                    forced: true,
+                    onChange: (quality) => {
+                        if (isHLS && hlsPlayer && hlsPlayer.levels.length > 1) {
+                            // Find the closest matching level
+                            let selectedLevel = -1; // Auto
+                            for (let i = 0; i < hlsPlayer.levels.length; i++) {
+                                if (hlsPlayer.levels[i].height <= quality) {
+                                    selectedLevel = i;
+                                    break;
+                                }
+                            }
+                            
+                            if (selectedLevel !== -1) {
+                                hlsPlayer.currentLevel = selectedLevel;
+                                if (qualitySelect) qualitySelect.value = selectedLevel;
+                            } else {
+                                hlsPlayer.currentLevel = -1; // Auto
+                                if (qualitySelect) qualitySelect.value = 'auto';
+                            }
+                        }
+                    }
+                },
+                captions: { active: true, language: 'auto', update: true },
+                previewThumbnails: {
+                    enabled: false // Disabled as we don't have a thumbnail source
+                },
+                vimeo: { 
+                    byline: false, 
+                    portrait: false, 
+                    title: false, 
+                    speed: true, 
+                    transparent: false 
+                },
+                youtube: { 
+                    noCookie: true, 
+                    rel: 0, 
+                    showinfo: 0, 
+                    iv_load_policy: 3, 
+                    modestbranding: 1 
+                },
+                // Custom icon for better progress visibility
+                iconUrl: 'https://cdn.plyr.io/3.6.9/plyr.svg',
+                // Custom progress bar styling
+                selectors: {
+                    progress: '.plyr__progress'
+                }
+            });
+            
+            // Plyr event listeners
+            player.on('ready', function() {
+                console.log('Plyr player ready');
+                hideLoading();
+                
+                // Ensure progress bar is visible
+                const progressBar = document.querySelector('.plyr__progress input[type="range"]');
+                if (progressBar) {
+                    progressBar.style.zIndex = '10';
+                }
+                
+                // Try to start playback
+                player.play().catch(function(error) {
+                    console.log('Autoplay prevented, user interaction required');
+                });
+            });
+            
+            player.on('loadstart', function() {
+                showLoading("Loading video...");
+            });
+            
+            player.on('canplay', function() {
+                hideLoading();
+            });
+            
+            player.on('waiting', function() {
+                showLoading("Buffering...");
+            });
+            
+            player.on('playing', function() {
+                hideLoading();
+            });
+            
+            player.on('error', function(event) {
+                console.error('Plyr error:', event.detail);
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    showLoading(`Playback error. Retrying... (${retryCount}/${MAX_RETRIES})`);
+                    
+                    setTimeout(function() {
+                        player.source = {
+                            type: 'video',
+                            sources: [{
+                                src: videoPlayer.getAttribute('src'),
+                                type: isHLS ? 'application/vnd.apple.mpegurl' : 'video/mp4'
+                            }]
+                        };
+                    }, RETRY_DELAY);
+                } else {
+                    showError("Playback failed after multiple attempts");
+                }
+            });
+            
+            // Ensure progress bar updates correctly
+            player.on('timeupdate', function() {
+                updateBufferIndicator();
+            });
+            
+            player.on('progress', function() {
+                updateBufferIndicator();
+            });
+        }
+        
+        // Retry button handler
+        retryButton.addEventListener('click', function() {
+            retryCount = 0;
+            if (isHLS && hlsPlayer) {
+                hlsPlayer.destroy();
+                hlsPlayer = null;
+            }
+            
+            initPlayer();
         });
-
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Prevent shortcuts when typing in inputs
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            switch(e.key) {
+                case ' ': // Space bar to play/pause
+                    e.preventDefault();
+                    if (player.paused) {
+                        player.play();
+                    } else {
+                        player.pause();
+                    }
+                    break;
+                case 'f': // Toggle fullscreen
+                case 'F':
+                    e.preventDefault();
+                    player.fullscreen.toggle();
+                    break;
+                case 'm': // Toggle mute
+                case 'M':
+                    e.preventDefault();
+                    player.muted = !player.muted;
+                    break;
+                case 'ArrowLeft': // Rewind 10 seconds
+                    e.preventDefault();
+                    player.rewind(10);
+                    break;
+                case 'ArrowRight': // Fast forward 10 seconds
+                    e.preventDefault();
+                    player.forward(10);
+                    break;
+                case 'ArrowUp': // Increase volume
+                    e.preventDefault();
+                    player.volume = Math.min(player.volume + 0.1, 1);
+                    break;
+                case 'ArrowDown': // Decrease volume
+                    e.preventDefault();
+                    player.volume = Math.max(player.volume - 0.1, 0);
+                    break;
+            }
+        });
+        
+        // Double-click to seek
+        videoPlayer.addEventListener('dblclick', function(e) {
+            const rect = videoPlayer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            
+            if (x < rect.width / 2) {
+                // Left side: rewind 10 seconds
+                player.rewind(10);
+            } else {
+                // Right side: forward 10 seconds
+                player.forward(10);
+            }
+        });
+        
+        // Prevent context menu on video
+        videoPlayer.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+        
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initPlayer);
+        } else {
+            initPlayer();
+        }
+        
+        // Keep existing references
         const body = document.querySelector('body');
         const footer = document.querySelector('footer');
         const toogle = document.querySelector('.toogle');
