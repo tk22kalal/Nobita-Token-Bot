@@ -51,29 +51,50 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         const playerElement = document.querySelector('.player');
-        if (playerElement) {
-            const source = playerElement.getAttribute('src');
-            let player;
+        if (!playerElement) return;
 
-            // If HLS is supported and video source ends with .m3u8
-            if (Hls.isSupported() && source.endsWith('.m3u8')) {
-                const hls = new Hls({
-                    maxBufferLength: 30,   // keeps buffer small for less lag
-                    maxMaxBufferLength: 60,
-                    startLevel: -1,        // auto quality
-                });
-                hls.loadSource(source);
-                hls.attachMedia(playerElement);
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        const source = playerElement.getAttribute('src');
+        let player;
+
+        // Only proceed if the tag is video
+        if (playerElement.tagName.toLowerCase() === 'video') {
+            if (source.endsWith('.m3u8')) {
+                if (Hls.isSupported()) {
+                    // Hls.js for browsers that don't support HLS natively
+                    const hls = new Hls({
+                        maxBufferLength: 30,
+                        maxMaxBufferLength: 60,
+                        startLevel: -1,
+                    });
+                    hls.loadSource(source);
+                    hls.attachMedia(playerElement);
+
+                    hls.on(Hls.Events.ERROR, function (event, data) {
+                        console.error('HLS error:', data);
+                    });
+
+                    hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                        player = new Plyr(playerElement, {
+                            controls,
+                            preload: 'metadata',
+                            playsinline: true,
+                            seekTime: 10
+                        });
+                    });
+                } else if (playerElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    // Native HLS support (Safari, iOS)
+                    playerElement.src = source;
                     player = new Plyr(playerElement, {
                         controls,
                         preload: 'metadata',
                         playsinline: true,
                         seekTime: 10
                     });
-                });
+                } else {
+                    console.error('HLS is not supported in this browser.');
+                }
             } else {
-                // Normal MP4 or other direct video
+                // For MP4 or other direct video
                 player = new Plyr(playerElement, {
                     controls,
                     preload: 'metadata',
@@ -81,14 +102,17 @@
                     seekTime: 10
                 });
             }
+        } else {
+            // For audio or other tags, fallback to Plyr only
+            player = new Plyr(playerElement, {
+                controls,
+                preload: 'metadata',
+                playsinline: true,
+                seekTime: 10
+            });
         }
     });
-
-    const body = document.querySelector('body');
-    const footer = document.querySelector('footer');
-    const toogle = document.querySelector('.toogle');
 </script>
-
     
 </body>
 </html>   
