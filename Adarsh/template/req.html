@@ -43,79 +43,75 @@
 <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    const playerElement = document.querySelector('.player');
-    if (!playerElement) return;
+    const controls = [
+        'play-large', 'rewind', 'play', 'fast-forward', 'progress',
+        'current-time', 'duration',
+        'settings', 'pip', 'airplay', 'fullscreen'
+    ];
 
-    const source = playerElement.getAttribute('src');
-    let player, hls;
+    document.addEventListener('DOMContentLoaded', () => {
+        const playerElement = document.querySelector('.player');
+        if (!playerElement) return;
 
-    function forcePlayAfterSeek() {
-        // Always try to play immediately after seeking
-        player.play().catch(() => {});
-        // For HLS, ensure buffer ahead after seek
-        if (hls) {
-            hls.startLoad(player.currentTime);
-            // Optionally, nudge buffering
-            if (typeof hls.swapAudioCodec === 'function') hls.swapAudioCodec();
-            if (typeof hls.currentLevel === 'number' && typeof hls.nextLevel === 'number')
-                hls.currentLevel = hls.nextLevel;
+        const source = playerElement.getAttribute('src');
+        let player, hls;
+
+        function initPlyr() {
+            player = new Plyr(playerElement, {
+                controls,
+                preload: 'metadata',
+                playsinline: true,
+                seekTime: 10
+            });
+
+            // Ensure resume after seek
+            player.on('seeked', () => {
+                if (player.paused) {
+                    player.play().catch(() => {});
+                }
+
+                // Force HLS to buffer ahead after seek
+                if (hls) {
+                    hls.startLoad(player.currentTime);
+                }
+            });
         }
-    }
 
-    function initPlyr() {
-        player = new Plyr(playerElement, {
-            controls: [
-                'play-large', 'rewind', 'play', 'fast-forward', 'progress',
-                'current-time', 'duration',
-                'settings', 'pip', 'airplay', 'fullscreen'
-            ],
-            preload: 'metadata',
-            playsinline: true,
-            seekTime: 10
-        });
+        if (playerElement.tagName.toLowerCase() === 'video') {
+            if (source.endsWith('.m3u8')) {
+                if (Hls.isSupported()) {
+                    hls = new Hls({
+                        maxBufferLength: 60,
+                        maxMaxBufferLength: 120,
+                        startLevel: -1,
+                        enableWorker: true,
+                        lowLatencyMode: true,
+                    });
+                    hls.loadSource(source);
+                    hls.attachMedia(playerElement);
 
-        // Force play after seek
-        player.on('seeked', forcePlayAfterSeek);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        initPlyr();
+                    });
 
-        // Also try to force play after 'seeking' (some browsers emit only this event)
-        player.on('seeking', forcePlayAfterSeek);
-    }
-
-    if (playerElement.tagName.toLowerCase() === 'video') {
-        if (source.endsWith('.m3u8')) {
-            if (Hls.isSupported()) {
-                hls = new Hls({
-                    maxBufferLength: 60,
-                    maxMaxBufferLength: 120,
-                    startLevel: -1,
-                    enableWorker: true,
-                    lowLatencyMode: true,
-                });
-                hls.loadSource(source);
-                hls.attachMedia(playerElement);
-
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    hls.on(Hls.Events.ERROR, (event, data) => {
+                        console.error('HLS error:', data);
+                    });
+                } else if (playerElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    playerElement.src = source;
                     initPlyr();
-                });
-
-                hls.on(Hls.Events.ERROR, (event, data) => {
-                    console.error('HLS error:', data);
-                });
-            } else if (playerElement.canPlayType('application/vnd.apple.mpegurl')) {
-                playerElement.src = source;
+                }
+            } else {
+                // MP4 or direct video
                 initPlyr();
             }
         } else {
-            // MP4 or direct video
+            // For audio or others
             initPlyr();
         }
-    } else {
-        // For audio or others
-        initPlyr();
-    }
-});
+    });
 </script>
+
     
 </body>
 </html>   
