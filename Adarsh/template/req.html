@@ -1,3 +1,4 @@
+<!--(c) NobiDeveloper-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,42 +20,6 @@
             color: Black;
             font-family: serif;
         }
-        
-        .container {
-            max-width: 100%;
-            margin: 0 auto;
-            position: relative;
-        }
-        
-        .player {
-            width: 100%;
-            height: auto;
-            max-height: 80vh;
-        }
-        
-        .buffering-indicator {
-            display: none;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 5px;
-            z-index: 10;
-        }
-        
-        .quality-selector {
-            position: absolute;
-            bottom: 60px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 5px;
-            border-radius: 3px;
-            z-index: 5;
-        }
     </style>
     <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGkvWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
 </head>
@@ -71,110 +36,59 @@
     </header>
 
     <div class="container">
-        <div class="buffering-indicator" id="bufferingIndicator">Buffering...</div>
-        <{{ tag }} src="{{ file_url }}" class="player" preload="auto" crossorigin="anonymous"></{{ tag }}>
-        <div class="quality-selector" id="qualitySelector" style="display: none;">
-            <label for="quality">Quality: </label>
-            <select id="quality">
-                <option value="auto">Auto</option>
-                <option value="1080">1080p</option>
-                <option value="720">720p</option>
-                <option value="480">480p</option>
-                <option value="360">360p</option>
-            </select>
-        </div>
+        <{{ tag }} src="{{ file_url }}" class="player"></{{ tag }}>
     </div>
 
-    <script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
-    <script>
-        // Configuration for better performance
-        const controls = [
-            'play-large', 'rewind', 'play', 'fast-forward', 'progress',
-            'current-time', 'duration', 'mute', 'volume', 'captions',
-            'settings', 'pip', 'airplay', 'fullscreen'
-        ];
-        
-        const playerConfig = {
-            controls,
-            autoplay: false,
-            muted: false,
-            seekTime: 10,
-            volume: 0.7,
-            disableContextMenu: false,
-            loadSprite: false,
-            quality: {
-                default: 'auto',
-                options: ['auto', 1080, 720, 480, 360]
-            },
-            // Performance optimizations
-            settings: ['quality', 'speed'],
-            speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-            storage: { enabled: true, key: 'plyr' },
-            tooltips: { controls: true, seek: true }
-        };
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            const player = new Plyr('.player', playerConfig);
-            
-            // Show buffering indicator
-            player.on('waiting', () => {
-                document.getElementById('bufferingIndicator').style.display = 'block';
-            });
-            
-            // Hide buffering indicator when playback resumes
-            player.on('playing', () => {
-                document.getElementById('bufferingIndicator').style.display = 'none';
-            });
-            
-            // Show quality selector for video elements
-            if (document.querySelector('video')) {
-                document.getElementById('qualitySelector').style.display = 'block';
-            }
-            
-            // Handle quality changes
-            document.getElementById('quality').addEventListener('change', function() {
-                if (this.value === 'auto') {
-                    player.quality = 'auto';
-                } else {
-                    player.quality = parseInt(this.value);
-                }
-            });
-            
-            // Monitor network conditions and adjust quality if needed
-            let networkSlow = false;
-            let checkInterval = setInterval(() => {
-                if (player.buffered.length > 0) {
-                    const bufferedEnd = player.buffered.end(player.buffered.length - 1);
-                    const currentTime = player.currentTime;
-                    const bufferAhead = bufferedEnd - currentTime;
-                    
-                    // If buffer is less than 10 seconds and network is slow, reduce quality
-                    if (bufferAhead < 10 && !networkSlow) {
-                        networkSlow = true;
-                        // Try to switch to a lower quality
-                        const currentQuality = player.quality;
-                        if (currentQuality > 360) {
-                            const lowerQualities = [1080, 720, 480, 360].filter(q => q < currentQuality);
-                            if (lowerQualities.length > 0) {
-                                player.quality = lowerQualities[0];
-                                console.log('Reduced quality due to buffering');
-                            }
-                        }
-                    } else if (bufferAhead > 30 && networkSlow) {
-                        networkSlow = false;
-                    }
-                }
-            }, 5000);
-            
-            // Clean up interval on page unload
-            window.addEventListener('beforeunload', () => {
-                clearInterval(checkInterval);
-            });
-        });
 
-        const body = document.querySelector('body');
-        const footer = document.querySelector('footer');
-        const toogle = document.querySelector('.toogle');
-    </script>
+<script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+    const controls = [
+        'play-large', 'rewind', 'play', 'fast-forward', 'progress',
+        'current-time', 'duration', 'mute', 'volume', 'captions',
+        'settings', 'pip', 'airplay', 'fullscreen'
+    ];
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const playerElement = document.querySelector('.player');
+        if (playerElement) {
+            const source = playerElement.getAttribute('src');
+            let player;
+
+            // If HLS is supported and video source ends with .m3u8
+            if (Hls.isSupported() && source.endsWith('.m3u8')) {
+                const hls = new Hls({
+                    maxBufferLength: 30,   // keeps buffer small for less lag
+                    maxMaxBufferLength: 60,
+                    startLevel: -1,        // auto quality
+                });
+                hls.loadSource(source);
+                hls.attachMedia(playerElement);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    player = new Plyr(playerElement, {
+                        controls,
+                        preload: 'metadata',
+                        playsinline: true,
+                        seekTime: 10
+                    });
+                });
+            } else {
+                // Normal MP4 or other direct video
+                player = new Plyr(playerElement, {
+                    controls,
+                    preload: 'metadata',
+                    playsinline: true,
+                    seekTime: 10
+                });
+            }
+        }
+    });
+
+    const body = document.querySelector('body');
+    const footer = document.querySelector('footer');
+    const toogle = document.querySelector('.toogle');
+</script>
+
+    
 </body>
-</html>
+</html>   
