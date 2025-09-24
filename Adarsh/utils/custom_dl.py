@@ -209,18 +209,11 @@ class ByteStreamer:
                     if current_part > part_count:
                         break
 
-                    await asyncio.sleep(0.5) # Add a delay to avoid FloodWait
                     r = await media_session.send(
                         raw.functions.upload.GetFile(
                             location=location, offset=offset, limit=chunk_size
                         ),
                     )
-        except FloodWait as e:
-            logging.warning(f"FloodWait: {e.x} seconds. Retrying...")
-            await asyncio.sleep(e.x)
-            yield await self.yield_file(
-                file_id, index, offset, first_part_cut, last_part_cut, part_count, chunk_size
-            )
         except (TimeoutError, AttributeError):
             pass
         finally:
