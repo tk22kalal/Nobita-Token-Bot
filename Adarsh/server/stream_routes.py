@@ -24,15 +24,8 @@ from Adarsh.vars import Var
 
 routes = web.RouteTableDef()
 
-# Initialize database conditionally
-try:
-    if Var.DATABASE_URL and Var.DATABASE_URL.strip():
-        db = Database(Var.DATABASE_URL, Var.name)
-    else:
-        db = Database("", Var.name)  # This will create a disabled database instance
-except Exception as e:
-    print(f"Database initialization error: {e}")
-    db = Database("", Var.name)  # Fallback to disabled database
+# Initialize database conditionally - use a global instance
+db = Database(Var.DATABASE_URL, Var.name)
 
 async def render_prepare_page(temp_data):
     """Render the intermediate page template"""
