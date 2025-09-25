@@ -17,7 +17,9 @@ class Database:
             self.db = None
             self.col = None
             self.temp_files = None
-            print("Database disabled - no DATABASE_URL provided")
+            # In-memory storage for development/testing
+            self._memory_temp_files = {}
+            print("Database disabled - no DATABASE_URL provided, using in-memory storage")
 
     def new_user(self, id):
         return dict(
@@ -69,11 +71,25 @@ class Database:
     # Temporary file storage for intermediate page system
     async def store_temp_file(self, message_data):
         """Store temporary file data and return a unique token"""
-        if not self.enabled:
-            # For testing without database, create a simple token
-            return "test_token_" + secrets.token_urlsafe(8)
-        
         token = secrets.token_urlsafe(16)
+        
+        if not self.enabled:
+            # Store in memory for testing
+            temp_data = {
+                'token': token,
+                'message_id': message_data['message_id'],
+                'file_name': message_data['file_name'], 
+                'file_size': message_data['file_size'],
+                'mime_type': message_data['mime_type'],
+                'caption': message_data['caption'],
+                'from_chat_id': message_data['from_chat_id'],
+                'file_unique_id': message_data['file_unique_id'],
+                'created_at': time.time(),
+                'expires_at': time.time() + (24 * 60 * 60)  # 24 hours
+            }
+            self._memory_temp_files[token] = temp_data
+            return token
+        # Database enabled - use MongoDB
         temp_data = {
             'token': token,
             'message_id': message_data['message_id'],
@@ -92,7 +108,16 @@ class Database:
     async def get_temp_file(self, token):
         """Retrieve temporary file data by token"""
         if not self.enabled:
+            # Get from memory storage
+            temp_data = self._memory_temp_files.get(token)
+            if temp_data and temp_data.get('expires_at', 0) > time.time():
+                return temp_data
+            elif temp_data:
+                # Clean up expired token
+                del self._memory_temp_files[token]
             return None
+            
+        # Get from database
         temp_data = await self.temp_files.find_one({'token': token})
         if temp_data and temp_data.get('expires_at', 0) > time.time():
             return temp_data
@@ -104,6 +129,9 @@ class Database:
     async def delete_temp_file(self, token):
         """Delete temporary file data after stream generation"""
         if not self.enabled:
+            # Delete from memory storage
+            if token in self._memory_temp_files:
+                del self._memory_temp_files[token]
             return
         await self.temp_files.delete_one({'token': token})
 
