@@ -78,11 +78,15 @@ async def favicon_handler(_):
 
 @routes.get("/", allow_head=True)
 async def root_route_handler(_):
+    telegram_bot = "Not connected"
+    if hasattr(StreamBot, 'username') and StreamBot.username:
+        telegram_bot = "@" + StreamBot.username
+        
     return web.json_response(
         {
             "server_status": "running",
-            "uptime": get_readable_time(time.time() - StartTime),
-            "telegram_bot": "@" + StreamBot.username,
+            "uptime": get_readable_time(int(time.time() - StartTime)),
+            "telegram_bot": telegram_bot,
             "connected_bots": len(multi_clients),
             "loads": dict(
                 ("bot" + str(c + 1), l)
