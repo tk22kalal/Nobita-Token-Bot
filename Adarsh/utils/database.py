@@ -1,5 +1,7 @@
 import datetime
 import motor.motor_asyncio
+import secrets
+import time
 
 
 class Database:
@@ -7,6 +9,7 @@ class Database:
         self._client = motor.motor_asyncio.AsyncIOMotorClient(uri)
         self.db = self._client[database_name]
         self.col = self.db.users
+        self.temp_files = self.db.temp_files
 
     def new_user(self, id):
         return dict(
@@ -40,3 +43,41 @@ class Database:
 
     async def delete_user(self, user_id):
         await self.col.delete_many({'id': int(user_id)})
+
+    # Temporary file storage for intermediate page system
+    async def store_temp_file(self, message_data):
+        """Store temporary file data and return a unique token"""
+        token = secrets.token_urlsafe(16)
+        temp_data = {
+            'token': token,
+            'message_id': message_data['message_id'],
+            'file_name': message_data['file_name'], 
+            'file_size': message_data['file_size'],
+            'mime_type': message_data['mime_type'],
+            'caption': message_data['caption'],
+            'from_chat_id': message_data['from_chat_id'],
+            'file_unique_id': message_data['file_unique_id'],
+            'created_at': time.time(),
+            'expires_at': time.time() + (24 * 60 * 60)  # 24 hours
+        }
+        await self.temp_files.insert_one(temp_data)
+        return token
+
+    async def get_temp_file(self, token):
+        """Retrieve temporary file data by token"""
+        temp_data = await self.temp_files.find_one({'token': token})
+        if temp_data and temp_data.get('expires_at', 0) > time.time():
+            return temp_data
+        elif temp_data:
+            # Clean up expired token
+            await self.temp_files.delete_one({'token': token})
+        return None
+
+    async def delete_temp_file(self, token):
+        """Delete temporary file data after stream generation"""
+        await self.temp_files.delete_one({'token': token})
+
+    async def cleanup_expired_temp_files(self):
+        """Clean up expired temporary files"""
+        current_time = time.time()
+        await self.temp_files.delete_many({'expires_at': {'$lt': current_time}})
