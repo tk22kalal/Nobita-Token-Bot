@@ -10,8 +10,8 @@ from urllib.parse import quote_plus
 from pyrogram import filters, Client
 from pyrogram.enums import ParseMode
 from pyrogram.errors import FloodWait
-from pyrogram.types import Message
-from Adarsh.utils.file_properties import get_name, get_hash
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from Adarsh.utils.file_properties import get_name, get_hash, get_media_from_message
 from helper_func import encode, get_message_id, decode, get_messages
 
 db = Database(Var.DATABASE_URL, Var.name)
@@ -19,52 +19,61 @@ CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
 PROTECT_CONTENT = os.environ.get('PROTECT_CONTENT', "False") == "True"
 DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True'
 
+async def create_intermediate_link(message: Message):
+    """Create intermediate link for the message and store data temporarily"""
+    # Extract file information
+    media = get_media_from_message(message)
+    if not media:
+        raise ValueError("No media found in message")
+    
+    # Prepare caption
+    caption = ""
+    if message.caption:
+        caption = message.caption.html
+        caption = re.sub(r'@[\w_]+|http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', caption)
+        caption = re.sub(r'\s+', ' ', caption.strip())
+        caption = re.sub(r'\s*#\w+', '', caption)
+    
+    if not caption:
+        caption = get_name(message) or "NEXTPULSE"
+    
+    # Prepare message data for temporary storage
+    message_data = {
+        'message_id': message.id,
+        'file_name': getattr(media, 'file_name', None) or get_name(message),
+        'file_size': getattr(media, 'file_size', 0),
+        'mime_type': getattr(media, 'mime_type', 'application/octet-stream'),
+        'caption': caption,
+        'from_chat_id': message.chat.id,
+        'file_unique_id': getattr(media, 'file_unique_id', '')
+    }
+    
+    # Store in database and get token
+    token = await db.store_temp_file(message_data)
+    
+    # Create intermediate link
+    intermediate_link = f"{Var.URL}prepare/{token}"
+    
+    return intermediate_link, caption
+
+async def create_intermediate_link_for_batch(message: Message):
+    """Create intermediate link for batch processing"""
+    intermediate_link, caption = await create_intermediate_link(message)
+    return {
+        "title": caption,
+        "streamingUrl": intermediate_link  # This is now an intermediate link, not a direct stream
+    }
+
 async def process_message(msg, json_output, skipped_messages):
-    """Process individual message and add to output with enhanced error handling"""
+    """Process individual message and create intermediate link (updated for new system)"""
     try:
         # Validate media content
         if not (msg.document or msg.video or msg.audio):
             raise ValueError("No media content found in message")
         
-        # Prepare caption with fallbacks
-        if msg.caption:
-            caption = msg.caption.html
-            # Clean caption: remove URLs, mentions, hashtags and extra spaces
-            caption = re.sub(r'(https?://\S+|@\w+|#\w+)', '', caption)
-            caption = re.sub(r'\s+', ' ', caption).strip()
-        else:
-            # Fallback to filename if no caption
-            caption = get_name(msg) or "NEXTPULSE"
-        
-        # Copy message to bin channel with FloodWait handling
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                log_msg = await msg.copy(
-                    chat_id=Var.BIN_CHANNEL,
-                    caption=caption[:1024],  # Ensure caption length limit
-                    parse_mode=ParseMode.HTML
-                )
-                break
-            except FloodWait as e:
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(e.x)
-                else:
-                    raise
-        else:
-            raise Exception("Max retries exceeded for FloodWait")
-        
-        # Generate streaming URL
-        file_name = get_name(log_msg) or "NEXTPULSE"
-        file_hash = get_hash(log_msg)
-        fqdn_url = Var.get_url_for_file(str(log_msg.id))
-        stream_link = f"{fqdn_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
-        
-        # Add to successful output (same format as before)
-        json_output.append({
-            "title": caption,
-            "streamingUrl": stream_link
-        })
+        # Create intermediate link instead of immediate stream generation
+        intermediate_data = await create_intermediate_link_for_batch(msg)
+        json_output.append(intermediate_data)
         
     except Exception as e:
         # Capture details for skipped messages
@@ -178,56 +187,34 @@ async def batch(client: Client, message: Message):
 
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
 async def private_receive_handler(c: Client, m: Message):
-    if bool(CUSTOM_CAPTION) and bool(m.document):
-        caption = CUSTOM_CAPTION.format(
-            previouscaption="" if not m.caption else m.caption.html,
-            filename=m.video.file_name
-        )
-    else:
-        caption = m.caption.html if m.caption else get_name(m.video)
-    caption = re.sub(r'@[\w_]+|http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', caption)
-    caption = re.sub(r'\s+', ' ', caption.strip())
-    caption = re.sub(r'\s*#\w+', '', caption)
-
     try:
-        log_msg = await m.copy(chat_id=Var.BIN_CHANNEL)
-        await asyncio.sleep(0.5)
-        stream_link = f"{Var.URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-        download_link = f"{Var.URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-
-        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("STREAM ⏯️", url=stream_link)]])
-        await log_msg.edit_reply_markup(reply_markup)        
-        F_text = f"<tr><td>&lt;a href='{download_link}' target='_blank'&gt; {caption} &lt;/a&gt;</td></tr>"
-        text = f"<tr><td>{F_text}</td></tr>"
-        X = await m.reply_text(text=f"{text}", disable_web_page_preview=True, quote=True)
-        await asyncio.sleep(3)
-    except FloodWait as e:
-        print(f"Sleeping for {str(e.x)}s")
-        await asyncio.sleep(e.x)
+        # Create intermediate link instead of immediate stream generation
+        intermediate_link, caption = await create_intermediate_link(m)
+        
+        # Create button with intermediate link
+        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("GENERATE STREAM 🎬", url=intermediate_link)]])
+        
+        # Send response with intermediate link
+        response_text = f"📁 <b>{caption}</b>\n\n🔗 Click the button below to generate your stream link:"
+        await m.reply_text(text=response_text, reply_markup=reply_markup, disable_web_page_preview=True, quote=True)
+        
+    except Exception as e:
+        await m.reply_text(f"❌ Error processing file: {str(e)}", quote=True)
+        print(f"Error in private_receive_handler: {e}")
 
 @StreamBot.on_message((filters.private) & (filters.video | filters.audio | filters.photo), group=3)
-async def private_receive_handler(c: Client, m: Message):
-    if bool(CUSTOM_CAPTION) and bool(m.video):
-        caption = CUSTOM_CAPTION.format(
-            previouscaption="" if not m.caption else m.caption.html,
-            filename=m.video.file_name
-        )
-    else:
-        caption = m.caption.html if m.caption else get_name(m.video)
-    caption = re.sub(r'@[\w_]+|http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', caption)
-    caption = re.sub(r'\s+', ' ', caption.strip())
-
+async def private_receive_handler_video(c: Client, m: Message):
     try:
-        log_msg = await m.copy(chat_id=Var.BIN_CHANNEL)
-        await asyncio.sleep(0.5)
-        stream_link = f"{Var.URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-        download_link = f"{Var.URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-
-        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("STREAM ⏯️", url=stream_link)]])
-        await log_msg.edit_reply_markup(reply_markup)        
-        F_text = f"<tr><td>&lt;a href='{stream_link}' target='_blank'&gt; {caption} &lt;/a&gt;</td></tr>"
-        text = f"<tr><td>{F_text}</td></tr>"
-        X = await m.reply_text(text=f"{text}", disable_web_page_preview=True, quote=True)
-    except FloodWait as e:
-        print(f"Sleeping for {str(e.x)}s")
-        await asyncio.sleep(e.x)
+        # Create intermediate link instead of immediate stream generation
+        intermediate_link, caption = await create_intermediate_link(m)
+        
+        # Create button with intermediate link
+        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("GENERATE STREAM 🎬", url=intermediate_link)]])
+        
+        # Send response with intermediate link
+        response_text = f"🎥 <b>{caption}</b>\n\n🔗 Click the button below to generate your stream link:"
+        await m.reply_text(text=response_text, reply_markup=reply_markup, disable_web_page_preview=True, quote=True)
+        
+    except Exception as e:
+        await m.reply_text(f"❌ Error processing file: {str(e)}", quote=True)
+        print(f"Error in private_receive_handler_video: {e}")
