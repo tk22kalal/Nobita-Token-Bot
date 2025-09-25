@@ -6,12 +6,22 @@ import time
 
 class Database:
     def __init__(self, uri, database_name):
-        self.enabled = bool(uri and uri.strip())
+        # Check if URI is valid and not empty
+        self.enabled = bool(uri and uri.strip() and (uri.startswith('mongodb://') or uri.startswith('mongodb+srv://')))
         if self.enabled:
-            self._client = motor.motor_asyncio.AsyncIOMotorClient(uri)
-            self.db = self._client[database_name]
-            self.col = self.db.users
-            self.temp_files = self.db.temp_files
+            try:
+                self._client = motor.motor_asyncio.AsyncIOMotorClient(uri)
+                self.db = self._client[database_name]
+                self.col = self.db.users
+                self.temp_files = self.db.temp_files
+            except Exception as e:
+                print(f"Database initialization error: {e}")
+                self.enabled = False
+                self._client = None
+                self.db = None
+                self.col = None
+                self.temp_files = None
+                self._memory_temp_files = {}
         else:
             self._client = None
             self.db = None
