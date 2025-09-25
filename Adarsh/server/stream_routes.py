@@ -4,18 +4,63 @@ import math
 import logging
 import secrets
 import mimetypes
+import asyncio
 from aiohttp import web
 from aiohttp.http_exceptions import BadStatusLine
+from pyrogram.errors import FloodWait
+from pyrogram.enums import ParseMode
+from urllib.parse import quote_plus
 from Adarsh.bot import multi_clients, work_loads, StreamBot
 from Adarsh.server.exceptions import FIleNotFound, InvalidHash
 from Adarsh import StartTime, __version__
 from ..utils.time_format import get_readable_time
 from ..utils.custom_dl import ByteStreamer
 from Adarsh.utils.render_template import render_page
+from Adarsh.utils.database import Database
+from Adarsh.utils.file_properties import get_name, get_hash
+from Adarsh.utils.human_readable import humanbytes
 from Adarsh.vars import Var
 
 
 routes = web.RouteTableDef()
+db = Database(Var.DATABASE_URL, Var.name)
+
+async def render_prepare_page(temp_data):
+    """Render the intermediate page template"""
+    try:
+        # Read the prepare.html template
+        with open("Adarsh/template/prepare.html") as f:
+            template_content = f.read()
+        
+        # Replace placeholders with actual data
+        file_size = humanbytes(temp_data.get('file_size', 0))
+        file_name = temp_data.get('file_name', 'Unknown File')
+        caption = temp_data.get('caption', file_name)
+        mime_type = temp_data.get('mime_type', 'application/octet-stream')
+        
+        # Determine if it's video/audio for icon
+        tag = mime_type.split("/")[0].strip() if mime_type else 'file'
+        
+        template_content = template_content.replace("{{file_name}}", file_name)
+        template_content = template_content.replace("{{caption}}", caption)
+        template_content = template_content.replace("{{file_size}}", file_size)
+        template_content = template_content.replace("{{token}}", temp_data['token'])
+        template_content = template_content.replace("{{tag}}", tag)
+        
+        return template_content
+        
+    except Exception as e:
+        logging.error(f"Error rendering prepare page: {e}")
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head><title>Error</title></head>
+        <body>
+            <h1>Error loading page</h1>
+            <p>{str(e)}</p>
+        </body>
+        </html>
+        """
 
 @routes.get("/favicon.ico")
 async def favicon_handler(_):
@@ -39,6 +84,81 @@ async def root_route_handler(_):
             "version": __version__,
         }
     )
+
+
+@routes.get(r"/prepare/{token}", allow_head=True)
+async def prepare_stream_handler(request: web.Request):
+    """Intermediate page that shows file info and generate stream button"""
+    try:
+        token = request.match_info["token"]
+        
+        # Get file data from database
+        temp_data = await db.get_temp_file(token)
+        if not temp_data:
+            return web.Response(text="❌ Link expired or not found", status=404)
+        
+        # Render intermediate page template
+        return web.Response(text=await render_prepare_page(temp_data), content_type='text/html')
+        
+    except Exception as e:
+        logging.error(f"Error in prepare_stream_handler: {e}")
+        return web.Response(text="❌ Error loading page", status=500)
+
+
+@routes.get(r"/api/generate/{token}")
+async def generate_stream_handler(request: web.Request):
+    """API endpoint to generate actual stream link by copying to BIN_CHANNEL"""
+    try:
+        token = request.match_info["token"]
+        
+        # Get file data from database
+        temp_data = await db.get_temp_file(token)
+        if not temp_data:
+            return web.json_response({"error": "Link expired or not found"}, status=404)
+        
+        # Get the original message from Telegram
+        client = StreamBot  # Use the main bot client
+        original_msg = await client.get_messages(temp_data['from_chat_id'], temp_data['message_id'])
+        
+        if not original_msg:
+            return web.json_response({"error": "Original message not found"}, status=404)
+        
+        # Copy message to BIN_CHANNEL with retry logic for FloodWait
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                log_msg = await original_msg.copy(
+                    chat_id=Var.BIN_CHANNEL,
+                    caption=temp_data['caption'][:1024],
+                    parse_mode=ParseMode.HTML
+                )
+                break
+            except FloodWait as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(e.x)
+                else:
+                    raise
+        else:
+            return web.json_response({"error": "Max retries exceeded for FloodWait"}, status=429)
+        
+        # Generate streaming URL
+        file_name = get_name(log_msg) or temp_data['file_name'] or "NEXTPULSE"
+        file_hash = get_hash(log_msg)
+        fqdn_url = Var.get_url_for_file(str(log_msg.id))
+        stream_link = f"{fqdn_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
+        
+        # Clean up temporary data
+        await db.delete_temp_file(token)
+        
+        return web.json_response({
+            "success": True,
+            "stream_url": stream_link,
+            "file_name": file_name
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in generate_stream_handler: {e}")
+        return web.json_response({"error": "Failed to generate stream link"}, status=500)
 
 
 @routes.get(r"/watch/{path:\S+}", allow_head=True)
