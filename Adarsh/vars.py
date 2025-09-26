@@ -30,18 +30,30 @@ class Var(object):
     if 'DYNO' in environ:
         ON_HEROKU = True
         APP_NAME = str(getenv('APP_NAME'))
-    
     else:
         ON_HEROKU = False
-    FQDN = str(getenv('FQDN', BIND_ADDRESS)) if not ON_HEROKU or getenv('FQDN') else APP_NAME+'.herokuapp.com'
-    HAS_SSL=bool(getenv('HAS_SSL', True))
-    if HAS_SSL:
-        URL = "https://{}/".format(FQDN)
+
+    HAS_SSL = bool(getenv('HAS_SSL', True))
+
+    if ON_HEROKU and APP_NAME:
+        FQDN = APP_NAME + ".herokuapp.com"
     else:
-        URL = "http://{}/".format(FQDN)
+        FQDN = BIND_ADDRESS
+
+    if HAS_SSL:
+        URL = f"https://{FQDN}/"
+    else:
+        URL = f"http://{FQDN}/"
+
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
-    BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split()))
+    BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split() if x.isdigit()))
+
+    @classmethod
+    def get_url_for_file(cls, file_id: str) -> str:
+        """Heroku setup → always return the base URL (no domain rotation)."""
+        protocol = "https" if cls.HAS_SSL else "http"
+        return f"{protocol}://{cls.FQDN}/"
 
     @classmethod
     def reset_batch(cls):
