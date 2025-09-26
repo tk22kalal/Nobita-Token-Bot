@@ -33,21 +33,38 @@ class Var(object):
     else:
         ON_HEROKU = False
 
-    FQDN = str(getenv('FQDN', BIND_ADDRESS)) if not ON_HEROKU or getenv('FQDN') else APP_NAME + '.herokuapp.com'
-    HAS_SSL = bool(getenv('HAS_SSL', True))
-    if HAS_SSL:
-        URL = "https://{}/".format(FQDN)
-    else:
-        URL = "http://{}/".format(FQDN)
+    _FQDN_LIST = [f"stream{i}.nextpulse.workers.dev" for i in range(1, 11)]
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
-    BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split()))
+    BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split() if x.isdigit()))
+
+    _file_fqdn_map = {}  # file_id -> fqdn
+    _current_fqdn = random.choice(_FQDN_LIST)
+    _current_repeat = 0
+
+    # Default (not important now)
+    FQDN = _current_fqdn
+    URL = f"https://{FQDN}/"
+
+    @classmethod
+    def get_fqdn_for_file(cls, file_id: str) -> str:
+        if file_id not in cls._file_fqdn_map:
+            # If 2 requests already used current, pick a new one
+            if cls._current_repeat >= 2:
+                new_fqdn = random.choice(cls._FQDN_LIST)
+                while new_fqdn == cls._current_fqdn:
+                    new_fqdn = random.choice(cls._FQDN_LIST)
+                cls._current_fqdn = new_fqdn
+                cls._current_repeat = 0
+
+            cls._file_fqdn_map[file_id] = cls._current_fqdn
+            cls._current_repeat += 1
+
+        return cls._file_fqdn_map[file_id]
 
     @classmethod
     def get_url_for_file(cls, file_id: str) -> str:
-        """Heroku setup → always return the base URL (no domain rotation)."""
-        protocol = "https" if cls.HAS_SSL else "http"
-        return f"{protocol}://{cls.FQDN}/"
+        return f"https://{cls.get_fqdn_for_file(file_id)}/"
 
     @classmethod
     def reset_batch(cls):
