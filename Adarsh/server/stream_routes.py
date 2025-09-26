@@ -154,7 +154,7 @@ async def generate_stream_handler(request: web.Request):
         stream_link = f"{fqdn_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
         
         # Clean up temporary data
-        await db.delete_temp_file(token)
+        
         
         return web.json_response({
             "success": True,
