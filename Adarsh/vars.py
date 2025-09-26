@@ -42,3 +42,12 @@ class Var(object):
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
     BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split()))
+
+    @classmethod
+    def reset_batch(cls):
+        # Not needed now, but keeping it in case of legacy code
+        pass
+
+
+# Instantiate the config object
+Var = Var()
