@@ -153,8 +153,8 @@ async def generate_stream_handler(request: web.Request):
         fqdn_url = Var.get_url_for_file(str(log_msg.id))
         stream_link = f"{fqdn_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
         
-        # Clean up temporary data
-        
+        # Keep temporary data for permanent links
+        # await db.delete_temp_file(token)  # Commented out to make links permanent
         
         return web.json_response({
             "success": True,
@@ -269,7 +269,12 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
 
     mime_type = file_id.mime_type
     file_name = file_id.file_name
-    disposition = "attachment"
+    
+    # Set disposition based on content type for better streaming
+    if mime_type and (mime_type.startswith("video/") or mime_type.startswith("audio/")):
+        disposition = "inline"  # Allow inline playback for media files
+    else:
+        disposition = "attachment"
 
     if mime_type:
         if not file_name:
@@ -284,14 +289,25 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
             mime_type = "application/octet-stream"
             file_name = f"{secrets.token_hex(2)}.unknown"
 
+    # Enhanced headers for better proxy compatibility and streaming
+    headers = {
+        "Content-Type": f"{mime_type}",
+        "Content-Range": f"bytes {from_bytes}-{until_bytes}/{file_size}",
+        "Content-Length": str(req_length),
+        "Content-Disposition": f'{disposition}; filename="{file_name}"',
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-cache, no-store, must-revalidate",  # Prevent proxy caching issues
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "Access-Control-Allow-Origin": "*",  # CORS for browser compatibility
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Range, Content-Range, Content-Length",
+        "X-Content-Type-Options": "nosniff",
+        "Connection": "keep-alive",
+    }
+
     return web.Response(
         status=206 if range_header else 200,
         body=body,
-        headers={
-            "Content-Type": f"{mime_type}",
-            "Content-Range": f"bytes {from_bytes}-{until_bytes}/{file_size}",
-            "Content-Length": str(req_length),
-            "Content-Disposition": f'{disposition}; filename="{file_name}"',
-            "Accept-Ranges": "bytes",
-        },
+        headers=headers,
     )
