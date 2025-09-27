@@ -153,12 +153,18 @@
         </div>
         
         <div class="description">
-            Click the button below to generate your streaming link. The file will be processed and your stream will open automatically.
+            Choose your option below. Stream to watch online or Download to save the file to your device.
         </div>
         
-        <button class="generate-btn" onclick="generateStream()">
-            🚀 Generate Stream Link
-        </button>
+        <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+            <button class="generate-btn" onclick="generateStream()">
+                🚀 Generate Stream Link
+            </button>
+            
+            <button class="generate-btn" onclick="generateDownload()" style="background: linear-gradient(45deg, #28a745, #20c997);">
+                💾 Generate Download Link
+            </button>
+        </div>
         
         <div class="loading">
             <div class="spinner"></div>
@@ -170,14 +176,15 @@
 
     <script>
         async function generateStream() {
-            const btn = document.querySelector('.generate-btn');
+            const buttons = document.querySelectorAll('.generate-btn');
             const loading = document.querySelector('.loading');
             const statusMessage = document.getElementById('statusMessage');
             
-            // Disable button and show loading
-            btn.disabled = true;
+            // Disable all buttons and show loading
+            buttons.forEach(btn => btn.disabled = true);
             loading.style.display = 'block';
             statusMessage.style.display = 'none';
+            loading.querySelector('p').textContent = 'Generating your stream link...';
             
             try {
                 const response = await fetch('/api/generate/{{token}}');
@@ -202,8 +209,52 @@
                 statusMessage.textContent = '❌ ' + error.message;
                 statusMessage.style.display = 'block';
                 
-                // Re-enable button
-                btn.disabled = false;
+                // Re-enable buttons
+                buttons.forEach(btn => btn.disabled = false);
+                loading.style.display = 'none';
+            }
+        }
+
+        async function generateDownload() {
+            const buttons = document.querySelectorAll('.generate-btn');
+            const loading = document.querySelector('.loading');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            // Disable all buttons and show loading
+            buttons.forEach(btn => btn.disabled = true);
+            loading.style.display = 'block';
+            statusMessage.style.display = 'none';
+            loading.querySelector('p').textContent = 'Generating your download link...';
+            
+            try {
+                const response = await fetch('/api/download/{{token}}');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Show success message
+                    statusMessage.className = 'status-message success';
+                    statusMessage.textContent = '✅ Download link generated successfully! Starting download...';
+                    statusMessage.style.display = 'block';
+                    
+                    // Start download immediately
+                    window.location.href = data.download_url;
+                    
+                    // Re-enable buttons after a delay
+                    setTimeout(() => {
+                        buttons.forEach(btn => btn.disabled = false);
+                        loading.style.display = 'none';
+                    }, 2000);
+                } else {
+                    throw new Error(data.error || 'Failed to generate download link');
+                }
+            } catch (error) {
+                // Show error message
+                statusMessage.className = 'status-message error';
+                statusMessage.textContent = '❌ ' + error.message;
+                statusMessage.style.display = 'block';
+                
+                // Re-enable buttons
+                buttons.forEach(btn => btn.disabled = false);
                 loading.style.display = 'none';
             }
         }
