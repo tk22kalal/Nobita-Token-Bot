@@ -33,7 +33,7 @@ class Var(object):
         ON_HEROKU = False
         
     # ✅ Cloudflare worker for permanent links
-    _FQDN_LIST = ["stream13.nextpulse.workers.dev"]
+    _FQDN_LIST = ["stream14.nextpulse.workers.dev"]
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
     BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split() if x.isdigit()))
