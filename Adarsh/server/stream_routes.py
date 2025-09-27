@@ -167,6 +167,62 @@ async def generate_stream_handler(request: web.Request):
         return web.json_response({"error": "Failed to generate stream link"}, status=500)
 
 
+@routes.get(r"/api/download/{token}")
+async def generate_download_handler(request: web.Request):
+    """API endpoint to generate download link by copying to BIN_CHANNEL"""
+    try:
+        token = request.match_info["token"]
+        
+        # Get file data from database
+        temp_data = await db.get_temp_file(token)
+        if not temp_data:
+            return web.json_response({"error": "Link expired or not found"}, status=404)
+        
+        # Get the original message from Telegram
+        client = StreamBot  # Use the main bot client
+        original_msg = await client.get_messages(temp_data['from_chat_id'], temp_data['message_id'])
+        
+        if not original_msg:
+            return web.json_response({"error": "Original message not found"}, status=404)
+        
+        # Copy message to BIN_CHANNEL with retry logic for FloodWait
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                log_msg = await original_msg.copy(
+                    chat_id=Var.BIN_CHANNEL,
+                    caption=temp_data['caption'][:1024],
+                    parse_mode=ParseMode.HTML
+                )
+                break
+            except FloodWait as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(e.x)
+                else:
+                    raise
+        else:
+            return web.json_response({"error": "Max retries exceeded for FloodWait"}, status=429)
+        
+        # Generate download URL with download=1 parameter
+        file_name = get_name(log_msg) or temp_data['file_name'] or "NEXTPULSE"
+        file_hash = get_hash(log_msg)
+        fqdn_url = Var.get_url_for_file(str(log_msg.id))
+        download_link = f"{fqdn_url}{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}&download=1"
+        
+        # Keep temporary data for permanent links (don't delete)
+        # await db.delete_temp_file(token)  # Commented out to make links permanent
+        
+        return web.json_response({
+            "success": True,
+            "download_url": download_link,
+            "file_name": file_name
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in generate_download_handler: {e}")
+        return web.json_response({"error": "Failed to generate download link"}, status=500)
+
+
 @routes.get(r"/watch/{path:\S+}", allow_head=True)
 async def stream_handler(request: web.Request):
     try:
@@ -215,6 +271,7 @@ class_cache = {}
 
 async def media_streamer(request: web.Request, id: int, secure_hash: str):
     range_header = request.headers.get("Range", 0)
+    is_download = request.query.get("download") == "1"  # Check if download is requested
     
     index = min(work_loads, key=work_loads.get)
     faster_client = multi_clients[index]
@@ -270,8 +327,10 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
     mime_type = file_id.mime_type
     file_name = file_id.file_name
     
-    # Set disposition based on content type for better streaming
-    if mime_type and (mime_type.startswith("video/") or mime_type.startswith("audio/")):
+    # Set disposition based on request type - force download if download=1 parameter
+    if is_download:
+        disposition = "attachment"  # Force download
+    elif mime_type and (mime_type.startswith("video/") or mime_type.startswith("audio/")):
         disposition = "inline"  # Allow inline playback for media files
     else:
         disposition = "attachment"
@@ -296,14 +355,13 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
         "Content-Length": str(req_length),
         "Content-Disposition": f'{disposition}; filename="{file_name}"',
         "Accept-Ranges": "bytes",
-        "Cache-Control": "no-cache, no-store, must-revalidate",  # Prevent proxy caching issues
-        "Pragma": "no-cache",
-        "Expires": "0",
+        "Cache-Control": "no-cache",  # Allow some caching but prevent stale content
         "Access-Control-Allow-Origin": "*",  # CORS for browser compatibility
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         "Access-Control-Allow-Headers": "Range, Content-Range, Content-Length",
+        "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
         "X-Content-Type-Options": "nosniff",
-        "Connection": "keep-alive",
+        "X-Forwarded-For": request.remote,  # Preserve original IP for Cloudflare
     }
 
     return web.Response(
