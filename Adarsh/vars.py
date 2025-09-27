@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Var(object):
     MULTI_CLIENT = False
     API_ID = int(getenv('API_ID', ''))
@@ -31,34 +32,28 @@ class Var(object):
         APP_NAME = str(getenv('APP_NAME'))
     else:
         ON_HEROKU = False
-        
-    # ✅ Cloudflare worker for permanent links
-    _FQDN_LIST = ["stream14.nextpulse.workers.dev"]
+
+    FQDN = str(getenv('FQDN', BIND_ADDRESS)) if not ON_HEROKU or getenv('FQDN') else APP_NAME + '.herokuapp.com'
+    HAS_SSL = bool(getenv('HAS_SSL', True))
+    if HAS_SSL:
+        URL = "https://{}/".format(FQDN)
+    else:
+        URL = "http://{}/".format(FQDN)
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
-    BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split() if x.isdigit()))
-    _file_fqdn_map = {}  # file_id -> fqdn
-    _current_fqdn = random.choice(_FQDN_LIST)
-    _current_repeat = 0
-    
-    # Default
-    FQDN = _current_fqdn
-    URL = f"https://{FQDN}/"
-    
-    @classmethod
-    def get_fqdn_for_file(cls, file_id: str) -> str:
-        if file_id not in cls._file_fqdn_map:
-            # Since only one FQDN exists, no need for rotation
-            cls._file_fqdn_map[file_id] = cls._current_fqdn
-        return cls._file_fqdn_map[file_id]
-    
+    BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split()))
+
     @classmethod
     def get_url_for_file(cls, file_id: str) -> str:
-        return f"https://{cls.get_fqdn_for_file(file_id)}/"
-    
+        """Heroku setup → always return the base URL (no domain rotation)."""
+        protocol = "https" if cls.HAS_SSL else "http"
+        return f"{protocol}://{cls.FQDN}/"
+
     @classmethod
     def reset_batch(cls):
+        # Not needed now, but keeping it in case of legacy code
         pass
+
 
 # Instantiate the config object
 Var = Var()
