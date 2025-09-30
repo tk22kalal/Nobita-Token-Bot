@@ -1,4 +1,3 @@
-<!--(c) NobiDeveloper-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,114 +7,436 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="monetag" content="f3ecc71ccb639ccf66d9d0dee93d3e7a">
     <title>{{ file_name }}</title>
-    <link rel="stylesheet" type='text/css' href="https://drive----google.com/uc?export=view&id=1pVLG4gZy7jdow3sO-wFS06aP_A9QX0O6">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
-    <link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css" />
-
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            font-family: 'Raleway', sans-serif;
+            overflow: hidden;
+        }
+        
         marquee {
-            font-size: 30px;
-            font-weight: 800;
-            color: Black;
-            font-family: serif;
+            font-size: 20px;
+            font-weight: 600;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            font-family: 'Delius', serif;
+        }
+        
+        .container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+        }
+        
+        .player {
+            width: 100%;
+            height: 100%;
+            max-width: 100vw;
+            max-height: 100vh;
+        }
+        
+        .plyr--video {
+            height: 100%;
+        }
+        
+        .plyr__video-wrapper {
+            height: 100%;
+        }
+        
+        .tap-indicator {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 48px;
+            color: rgba(255, 255, 255, 0.9);
+            pointer-events: none;
+            z-index: 100;
+            animation: tapFade 0.6s ease-out;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+        }
+        
+        .tap-indicator.left {
+            left: 30px;
+        }
+        
+        .tap-indicator.right {
+            right: 30px;
+        }
+        
+        @keyframes tapFade {
+            0% {
+                opacity: 1;
+                transform: translateY(-50%) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-50%) scale(1.5);
+            }
+        }
+        
+        .loading-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-size: 18px;
+            display: none;
+            z-index: 1000;
+        }
+        
+        .plyr__controls {
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+        }
+        
+        .quality-selector {
+            position: relative;
+        }
+        
+        .ima-ad-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
     </style>
-    <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGkvWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
+    <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGovWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
 </head>
 
 <body>
-
     <header>
-        <marquee bgcolor="#fff">
-            <div class="toogle"></div>
-            <div id="file-name">
-                {{ file_name }}
-            </div>
+        <marquee bgcolor="rgba(0,0,0,0.8)">
+            <div id="file-name">{{ file_name }}</div>
         </marquee>
     </header>
 
     <div class="container">
-        <{{ tag }} src="{{ file_url }}" class="player"></{{ tag }}>
+        <div class="loading-indicator" id="loading">Loading...</div>
+        <{{ tag }} src="{{ file_url }}" class="player" playsinline crossorigin="anonymous"></{{ tag }}>
+        <div id="ima-ad-container" class="ima-ad-container"></div>
     </div>
 
-
-<script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
+<script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const playerElement = document.querySelector('.player');
+    const container = document.querySelector('.container');
+    const loadingIndicator = document.getElementById('loading');
+    
     if (!playerElement) return;
 
     const source = playerElement.getAttribute('src');
     let player, hls;
+    let lastTapTime = 0;
+    let lastTapSide = null;
+    let adsManager;
+    let adsLoader;
+    let adDisplayContainer;
+    
+    const qualities = [];
+    let currentQuality = -1;
 
-    function forcePlayAfterSeek() {
-        // Always try to play immediately after seeking
-        player.play().catch(() => {});
-        // For HLS, ensure buffer ahead after seek
-        if (hls) {
-            hls.startLoad(player.currentTime);
-            // Optionally, nudge buffering
-            if (typeof hls.swapAudioCodec === 'function') hls.swapAudioCodec();
-            if (typeof hls.currentLevel === 'number' && typeof hls.nextLevel === 'number')
-                hls.currentLevel = hls.nextLevel;
+    function showLoading() {
+        loadingIndicator.style.display = 'block';
+    }
+
+    function hideLoading() {
+        loadingIndicator.style.display = 'none';
+    }
+
+    function showTapIndicator(side, text) {
+        const indicator = document.createElement('div');
+        indicator.className = `tap-indicator ${side}`;
+        indicator.innerHTML = text;
+        container.appendChild(indicator);
+        setTimeout(() => indicator.remove(), 600);
+    }
+
+    function handleDoubleTap(e) {
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTapTime;
+        const rect = playerElement.getBoundingClientRect();
+        const x = e.clientX || (e.touches && e.touches[0].clientX);
+        const isLeftSide = x < rect.width / 2;
+        
+        if (tapLength < 300 && tapLength > 0) {
+            if (isLeftSide === lastTapSide) {
+                e.preventDefault();
+                if (isLeftSide) {
+                    player.rewind(10);
+                    showTapIndicator('left', '⏪ 10s');
+                } else {
+                    player.forward(10);
+                    showTapIndicator('right', '10s ⏩');
+                }
+            }
+        }
+        lastTapSide = isLeftSide;
+        lastTapTime = currentTime;
+    }
+
+    function initGoogleAds() {
+        if (playerElement.tagName.toLowerCase() !== 'video') return;
+        
+        try {
+            adDisplayContainer = new google.ima.AdDisplayContainer(
+                document.getElementById('ima-ad-container'),
+                playerElement
+            );
+            
+            adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+            
+            adsLoader.addEventListener(
+                google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+                onAdsManagerLoaded,
+                false
+            );
+            
+            adsLoader.addEventListener(
+                google.ima.AdErrorEvent.Type.AD_ERROR,
+                onAdError,
+                false
+            );
+            
+            playerElement.addEventListener('ended', () => {
+                adsLoader.contentComplete();
+            });
+        } catch (e) {
+            console.log('IMA SDK not available:', e);
         }
     }
 
+    function requestAds(adTagUrl) {
+        if (!adsLoader) return;
+        
+        const adsRequest = new google.ima.AdsRequest();
+        adsRequest.adTagUrl = adTagUrl;
+        adsRequest.linearAdSlotWidth = playerElement.clientWidth;
+        adsRequest.linearAdSlotHeight = playerElement.clientHeight;
+        adsRequest.nonLinearAdSlotWidth = playerElement.clientWidth;
+        adsRequest.nonLinearAdSlotHeight = playerElement.clientHeight / 3;
+        
+        adsLoader.requestAds(adsRequest);
+    }
+
+    function onAdsManagerLoaded(adsManagerLoadedEvent) {
+        const adsRenderingSettings = new google.ima.AdsRenderingSettings();
+        adsRenderingSettings.restoreCustomPlaybackStateOnAdBreakComplete = true;
+        
+        adsManager = adsManagerLoadedEvent.getAdsManager(playerElement, adsRenderingSettings);
+        
+        adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
+        adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED, onContentPauseRequested);
+        adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, onContentResumeRequested);
+        
+        try {
+            adDisplayContainer.initialize();
+            adsManager.init(playerElement.clientWidth, playerElement.clientHeight, google.ima.ViewMode.NORMAL);
+            adsManager.start();
+        } catch (adError) {
+            console.log('AdsManager error:', adError);
+            playerElement.play();
+        }
+    }
+
+    function onAdError(adErrorEvent) {
+        console.log('Ad error:', adErrorEvent.getError());
+        if (adsManager) {
+            adsManager.destroy();
+        }
+    }
+
+    function onContentPauseRequested() {
+        playerElement.pause();
+    }
+
+    function onContentResumeRequested() {
+        playerElement.play();
+    }
+
+    function updateQuality(newQuality) {
+        if (!hls) return;
+        currentQuality = newQuality;
+        hls.currentLevel = newQuality;
+    }
+
     function initPlyr() {
-        player = new Plyr(playerElement, {
+        const defaultOptions = {
             controls: [
-                'play-large', 'rewind', 'play', 'fast-forward', 'progress',
-                'current-time', 'duration',
-                'settings', 'pip', 'airplay', 'fullscreen'
+                'play-large',
+                'rewind',
+                'play',
+                'fast-forward',
+                'progress',
+                'current-time',
+                'duration',
+                'mute',
+                'volume',
+                'settings',
+                'pip',
+                'airplay',
+                'fullscreen'
             ],
-            preload: 'metadata',
+            settings: ['quality', 'speed'],
+            quality: {
+                default: 'auto',
+                options: qualities.length > 0 ? ['auto', ...qualities] : [576, 720, 1080],
+                forced: true,
+                onChange: (quality) => {
+                    if (quality === 'auto') {
+                        updateQuality(-1);
+                    } else {
+                        const qualityIndex = qualities.indexOf(parseInt(quality));
+                        if (qualityIndex !== -1) {
+                            updateQuality(qualityIndex);
+                        }
+                    }
+                }
+            },
+            speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
+            preload: 'auto',
+            autoplay: false,
             playsinline: true,
-            seekTime: 10
+            seekTime: 10,
+            keyboard: { focused: true, global: true }
+        };
+
+        player = new Plyr(playerElement, defaultOptions);
+
+        player.on('playing', hideLoading);
+        player.on('waiting', showLoading);
+        player.on('canplay', hideLoading);
+        player.on('loadeddata', hideLoading);
+        
+        player.on('seeking', () => {
+            showLoading();
+        });
+        
+        player.on('seeked', () => {
+            hideLoading();
+            player.play().catch(() => {});
+            if (hls) {
+                hls.startLoad(player.currentTime);
+            }
         });
 
-        // Force play after seek
-        player.on('seeked', forcePlayAfterSeek);
-
-        // Also try to force play after 'seeking' (some browsers emit only this event)
-        player.on('seeking', forcePlayAfterSeek);
+        playerElement.addEventListener('touchstart', handleDoubleTap);
+        playerElement.addEventListener('click', handleDoubleTap);
+        
+        player.on('ready', () => {
+            hideLoading();
+        });
     }
 
     if (playerElement.tagName.toLowerCase() === 'video') {
         if (source.endsWith('.m3u8')) {
             if (Hls.isSupported()) {
+                showLoading();
+                
                 hls = new Hls({
-                    maxBufferLength: 60,
-                    maxMaxBufferLength: 120,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60,
+                    maxBufferSize: 60 * 1000 * 1000,
+                    maxBufferHole: 0.5,
                     startLevel: -1,
                     enableWorker: true,
-                    lowLatencyMode: true,
+                    lowLatencyMode: false,
+                    backBufferLength: 90,
+                    manifestLoadingTimeOut: 10000,
+                    manifestLoadingMaxRetry: 3,
+                    levelLoadingTimeOut: 10000,
+                    levelLoadingMaxRetry: 3,
+                    fragLoadingTimeOut: 20000,
+                    fragLoadingMaxRetry: 6,
+                    abrEwmaDefaultEstimate: 500000,
+                    abrBandWidthFactor: 0.95,
+                    abrBandWidthUpFactor: 0.7,
+                    startPosition: -1
                 });
+                
                 hls.loadSource(source);
                 hls.attachMedia(playerElement);
 
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+                    qualities.length = 0;
+                    data.levels.forEach((level, index) => {
+                        qualities.push(level.height);
+                    });
                     initPlyr();
+                    hideLoading();
+                });
+
+                hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+                    console.log('Quality switched to:', data.level);
                 });
 
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     console.error('HLS error:', data);
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.log('Network error, trying to recover...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.log('Media error, trying to recover...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                console.log('Fatal error, cannot recover');
+                                hls.destroy();
+                                break;
+                        }
+                    }
                 });
+
+                hls.on(Hls.Events.BUFFER_APPENDED, () => {
+                    hideLoading();
+                });
+
             } else if (playerElement.canPlayType('application/vnd.apple.mpegurl')) {
                 playerElement.src = source;
                 initPlyr();
             }
         } else {
-            // MP4 or direct video
             initPlyr();
         }
+        
+        initGoogleAds();
+        
     } else {
-        // For audio or others
         initPlyr();
     }
+
+    window.addEventListener('resize', () => {
+        if (adsManager) {
+            adsManager.resize(
+                playerElement.clientWidth,
+                playerElement.clientHeight,
+                google.ima.ViewMode.NORMAL
+            );
+        }
+    });
 });
 </script>
     
 </body>
-</html>   
+</html>
