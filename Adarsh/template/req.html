@@ -11,7 +11,6 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     
     <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/videojs-contrib-quality-levels@3.0.0/dist/videojs-contrib-quality-levels.min.css" rel="stylesheet">
     
     <style>
         * {
@@ -23,36 +22,34 @@
         body {
             background: #000;
             font-family: 'Raleway', sans-serif;
-            overflow: hidden;
+            overflow-x: hidden;
         }
         
         marquee {
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 600;
             color: #fff;
             background: rgba(0, 0, 0, 0.9);
             padding: 10px;
             font-family: 'Delius', serif;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 9999;
+            width: 100%;
+            z-index: 999;
         }
         
         .container {
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            width: 100%;
             background: #000;
-            padding-top: 50px;
+            position: relative;
         }
         
         .video-js {
             width: 100% !important;
-            height: calc(100vh - 50px) !important;
+            height: auto !important;
+            aspect-ratio: 16 / 9;
+        }
+        
+        audio.video-js {
+            height: 80px !important;
         }
         
         .vjs-tech {
@@ -104,30 +101,52 @@
             height: 2em !important;
             line-height: 2em !important;
             border: 0.06666em solid #fff !important;
-            background-color: rgba(0, 0, 0, 0.45) !important;
+            background-color: rgba(43, 51, 63, 0.7) !important;
+            left: 50% !important;
+            top: 50% !important;
+            transform: translate(-50%, -50%) !important;
         }
         
         .vjs-menu-button-popup .vjs-menu {
-            left: auto;
-            right: 0;
+            left: auto !important;
+            right: 0 !important;
         }
         
         .vjs-menu-button-popup .vjs-menu .vjs-menu-content {
-            background-color: rgba(0, 0, 0, 0.9);
-            max-height: 20em;
+            background-color: rgba(0, 0, 0, 0.9) !important;
+            max-height: 20em !important;
         }
         
-        .vjs-quality-selector .vjs-menu-button {
-            font-family: 'Raleway', sans-serif;
+        .vjs-menu li.vjs-selected {
+            background-color: rgba(255, 255, 255, 0.2) !important;
         }
         
-        audio.video-js {
-            height: 100px !important;
+        .vjs-quality-button .vjs-icon-placeholder::before {
+            content: 'HD';
+            font-size: 1.5em;
+            line-height: 1.67;
+        }
+        
+        .vjs-quality-button .vjs-menu {
+            min-width: 4em;
+        }
+        
+        .vjs-playback-rate .vjs-playback-rate-value {
+            font-size: 1.5em;
+            line-height: 2;
+        }
+        
+        a[download] {
+            display: none !important;
+        }
+        
+        .vjs-control[download] {
+            display: none !important;
         }
         
         @media (max-width: 768px) {
             marquee {
-                font-size: 16px;
+                font-size: 14px;
                 padding: 8px;
             }
             
@@ -161,6 +180,7 @@
             controls 
             preload="auto"
             playsinline
+            controlsList="nodownload"
             crossorigin="anonymous">
             <source src="{{ file_url }}" type="application/x-mpegURL">
         </{{ tag }}>
@@ -168,10 +188,6 @@
 
 <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@videojs/http-streaming@3.12.0/dist/videojs-http-streaming.min.js"></script>
-<script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/videojs-contrib-ads@7.4.0/dist/videojs.ads.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/videojs-ima@2.1.0/dist/videojs.ima.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/videojs-contrib-quality-levels@3.0.0/dist/videojs-contrib-quality-levels.min.js"></script>
 
 <script>
 (function() {
@@ -222,57 +238,81 @@
         lastTapTime = currentTime;
     }
     
-    const PlaybackRateMenuButton = videojs.getComponent('PlaybackRateMenuButton');
-    videojs.registerComponent('PlaybackRateMenuButton', PlaybackRateMenuButton);
-    
-    const qualityButton = videojs.extend(videojs.getComponent('MenuButton'), {
+    const QualityButton = videojs.extend(videojs.getComponent('MenuButton'), {
         constructor: function(player, options) {
             videojs.getComponent('MenuButton').call(this, player, options);
+            this.el().setAttribute('aria-label', 'Quality');
             this.controlText('Quality');
-            this.addClass('vjs-quality-selector');
+            this.addClass('vjs-quality-button');
+        },
+        
+        createEl: function() {
+            return videojs.getComponent('MenuButton').prototype.createEl.call(this, 'div', {
+                className: 'vjs-quality-button vjs-menu-button vjs-menu-button-popup vjs-control vjs-button'
+            });
+        },
+        
+        buildCSSClass: function() {
+            return 'vjs-quality-button ' + videojs.getComponent('MenuButton').prototype.buildCSSClass.call(this);
         },
         
         createItems: function() {
             const items = [];
+            const player = this.player();
             
             if (!qualityLevels || qualityLevels.length === 0) {
                 return items;
             }
             
-            items.push(new videojs.getComponent('MenuItem')(player, {
+            const MenuItem = videojs.getComponent('MenuItem');
+            
+            items.push(new MenuItem(player, {
                 label: 'Auto',
-                selected: true
+                selected: true,
+                selectable: true
             }));
             
             const heights = [];
+            const heightMap = {};
+            
             for (let i = 0; i < qualityLevels.length; i++) {
                 const quality = qualityLevels[i];
                 if (heights.indexOf(quality.height) === -1) {
                     heights.push(quality.height);
+                    heightMap[quality.height] = i;
                 }
             }
             
             heights.sort((a, b) => b - a);
             
             heights.forEach(height => {
-                items.push(new videojs.getComponent('MenuItem')(player, {
+                const item = new MenuItem(player, {
                     label: height + 'p',
-                    selected: false
-                }));
+                    selected: false,
+                    selectable: true
+                });
+                
+                item.on('click', function() {
+                    for (let i = 0; i < qualityLevels.length; i++) {
+                        qualityLevels[i].enabled = (qualityLevels[i].height === height);
+                    }
+                });
+                
+                items.push(item);
             });
             
             return items;
         }
     });
     
-    videojs.registerComponent('QualitySelector', qualityButton);
+    videojs.registerComponent('QualityButton', QualityButton);
     
     const playerOptions = {
         controls: true,
         autoplay: false,
         preload: 'auto',
         fluid: false,
-        playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+        playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
         controlBar: {
             children: [
                 'playToggle',
@@ -281,7 +321,7 @@
                 'durationDisplay',
                 'progressControl',
                 'volumePanel',
-                'qualitySelector',
+                'qualityButton',
                 'playbackRateMenuButton',
                 'pictureInPictureToggle',
                 'fullscreenToggle'
@@ -307,35 +347,44 @@
     player = videojs('player', playerOptions);
     
     player.ready(function() {
-        this.tech_.on('retryplaylist', function() {
-            console.log('Retrying playlist...');
-        });
-        
-        this.tech_.on('usage', function(event) {
-            console.log('VHS usage:', event);
-        });
+        const self = this;
         
         if (isVideo && source.indexOf('.m3u8') !== -1) {
             qualityLevels = player.qualityLevels();
             
             qualityLevels.on('addqualitylevel', function(event) {
-                console.log('Quality level added:', event.qualityLevel);
+                console.log('Quality level added:', event.qualityLevel.height + 'p');
             });
             
             qualityLevels.on('change', function() {
-                console.log('Quality changed to:', qualityLevels[qualityLevels.selectedIndex]);
+                const selectedLevel = qualityLevels[qualityLevels.selectedIndex];
+                if (selectedLevel) {
+                    console.log('Quality changed to:', selectedLevel.height + 'p');
+                }
             });
         }
         
         playerElement.addEventListener('touchstart', handleDoubleTap, { passive: true });
         playerElement.addEventListener('click', handleDoubleTap);
         
-        const playPromise = this.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(function(error) {
-                console.log('Autoplay prevented:', error);
+        const fullscreenBtn = self.controlBar.getChild('fullscreenToggle');
+        if (fullscreenBtn) {
+            fullscreenBtn.on('click', function() {
+                if (!self.isFullscreen()) {
+                    self.requestFullscreen();
+                } else {
+                    self.exitFullscreen();
+                }
             });
         }
+        
+        self.on('fullscreenchange', function() {
+            if (self.isFullscreen()) {
+                console.log('Entered fullscreen');
+            } else {
+                console.log('Exited fullscreen');
+            }
+        });
     });
     
     player.on('error', function(e) {
@@ -354,32 +403,18 @@
         console.log('Metadata loaded, duration:', player.duration());
     });
     
-    player.on('waiting', function() {
-        console.log('Player waiting for data...');
-    });
-    
-    player.on('canplay', function() {
-        console.log('Player can start playback');
-    });
-    
-    if (isVideo) {
-        try {
-            player.ima({
-                adTagUrl: 'YOUR_AD_TAG_URL_HERE',
-                adsManagerLoadedCallback: function() {
-                    console.log('IMA ads manager loaded');
-                }
-            });
-        } catch (error) {
-            console.log('IMA not configured or error:', error);
-        }
-    }
-    
     window.addEventListener('beforeunload', function() {
         if (player) {
             player.dispose();
         }
     });
+    
+    const style = document.createElement('style');
+    style.textContent = `
+        .video-js *[download] { display: none !important; }
+        .vjs-control-bar a[download] { display: none !important; }
+    `;
+    document.head.appendChild(style);
     
 })();
 </script>
