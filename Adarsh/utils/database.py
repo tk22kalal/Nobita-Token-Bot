@@ -78,9 +78,9 @@ class Database:
             return
         await self.col.delete_many({'id': int(user_id)})
 
-    # Temporary file storage for intermediate page system
+    # Permanent file storage for intermediate page system
     async def store_temp_file(self, message_data):
-        """Store temporary file data and return a unique token"""
+        """Store permanent file data and return a unique token"""
         token = secrets.token_urlsafe(16)
         
         if not self.enabled:
@@ -94,8 +94,7 @@ class Database:
                 'caption': message_data['caption'],
                 'from_chat_id': message_data['from_chat_id'],
                 'file_unique_id': message_data['file_unique_id'],
-                'created_at': time.time(),
-                'expires_at': time.time() + (24 * 60 * 60)  # 24 hours
+                'created_at': time.time()
             }
             self._memory_temp_files[token] = temp_data
             return token
@@ -109,32 +108,20 @@ class Database:
             'caption': message_data['caption'],
             'from_chat_id': message_data['from_chat_id'],
             'file_unique_id': message_data['file_unique_id'],
-            'created_at': time.time(),
-            'expires_at': time.time() + (24 * 60 * 60)  # 24 hours
+            'created_at': time.time()
         }
         await self.temp_files.insert_one(temp_data)
         return token
 
     async def get_temp_file(self, token):
-        """Retrieve temporary file data by token"""
+        """Retrieve permanent file data by token"""
         if not self.enabled:
-            # Get from memory storage
-            temp_data = self._memory_temp_files.get(token)
-            if temp_data and temp_data.get('expires_at', 0) > time.time():
-                return temp_data
-            elif temp_data:
-                # Clean up expired token
-                del self._memory_temp_files[token]
-            return None
+            # Get from memory storage (no expiration check - permanent links)
+            return self._memory_temp_files.get(token)
             
-        # Get from database
+        # Get from database (no expiration check - permanent links)
         temp_data = await self.temp_files.find_one({'token': token})
-        if temp_data and temp_data.get('expires_at', 0) > time.time():
-            return temp_data
-        elif temp_data:
-            # Clean up expired token
-            await self.temp_files.delete_one({'token': token})
-        return None
+        return temp_data
 
     async def delete_temp_file(self, token):
         """Delete temporary file data after stream generation"""
@@ -146,8 +133,6 @@ class Database:
         await self.temp_files.delete_one({'token': token})
 
     async def cleanup_expired_temp_files(self):
-        """Clean up expired temporary files"""
-        if not self.enabled:
-            return
-        current_time = time.time()
-        await self.temp_files.delete_many({'expires_at': {'$lt': current_time}})
+        """Clean up expired temporary files - DISABLED for permanent links"""
+        # Links are now permanent, no cleanup needed
+        return
