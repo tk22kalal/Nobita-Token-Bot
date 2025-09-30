@@ -40,6 +40,7 @@
             justify-content: center;
             align-items: center;
             background: #000;
+            position: relative;
         }
         
         .player {
@@ -103,16 +104,13 @@
             background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
         }
         
-        .quality-selector {
-            position: relative;
-        }
-        
         .ima-ad-container {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
+            display: none;
         }
     </style>
     <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGovWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
@@ -150,9 +148,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let adsManager;
     let adsLoader;
     let adDisplayContainer;
-    
-    const qualities = [];
-    let currentQuality = -1;
 
     function showLoading() {
         loadingIndicator.style.display = 'block';
@@ -193,6 +188,19 @@ document.addEventListener('DOMContentLoaded', () => {
         lastTapTime = currentTime;
     }
 
+    function forcePlayAfterSeek() {
+        // Force play after seeking (from original working code)
+        player.play().catch(() => {});
+        // For HLS, ensure buffer ahead after seek
+        if (hls) {
+            hls.startLoad(player.currentTime);
+            // Optionally, nudge buffering
+            if (typeof hls.swapAudioCodec === 'function') hls.swapAudioCodec();
+            if (typeof hls.currentLevel === 'number' && typeof hls.nextLevel === 'number')
+                hls.currentLevel = hls.nextLevel;
+        }
+    }
+
     function initGoogleAds() {
         if (playerElement.tagName.toLowerCase() !== 'video') return;
         
@@ -222,19 +230,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.log('IMA SDK not available:', e);
         }
-    }
-
-    function requestAds(adTagUrl) {
-        if (!adsLoader) return;
-        
-        const adsRequest = new google.ima.AdsRequest();
-        adsRequest.adTagUrl = adTagUrl;
-        adsRequest.linearAdSlotWidth = playerElement.clientWidth;
-        adsRequest.linearAdSlotHeight = playerElement.clientHeight;
-        adsRequest.nonLinearAdSlotWidth = playerElement.clientWidth;
-        adsRequest.nonLinearAdSlotHeight = playerElement.clientHeight / 3;
-        
-        adsLoader.requestAds(adsRequest);
     }
 
     function onAdsManagerLoaded(adsManagerLoadedEvent) {
@@ -272,12 +267,6 @@ document.addEventListener('DOMContentLoaded', () => {
         playerElement.play();
     }
 
-    function updateQuality(newQuality) {
-        if (!hls) return;
-        currentQuality = newQuality;
-        hls.currentLevel = newQuality;
-    }
-
     function initPlyr() {
         const defaultOptions = {
             controls: [
@@ -296,23 +285,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 'fullscreen'
             ],
             settings: ['quality', 'speed'],
-            quality: {
-                default: 'auto',
-                options: qualities.length > 0 ? ['auto', ...qualities] : [576, 720, 1080],
-                forced: true,
-                onChange: (quality) => {
-                    if (quality === 'auto') {
-                        updateQuality(-1);
-                    } else {
-                        const qualityIndex = qualities.indexOf(parseInt(quality));
-                        if (qualityIndex !== -1) {
-                            updateQuality(qualityIndex);
-                        }
-                    }
-                }
-            },
             speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
-            preload: 'auto',
+            preload: 'metadata', // Changed from 'auto' to 'metadata' for better performance
             autoplay: false,
             playsinline: true,
             seekTime: 10,
@@ -321,23 +295,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         player = new Plyr(playerElement, defaultOptions);
 
+        // Force play after seek (from original working code)
+        player.on('seeked', forcePlayAfterSeek);
+        player.on('seeking', forcePlayAfterSeek);
+
         player.on('playing', hideLoading);
         player.on('waiting', showLoading);
         player.on('canplay', hideLoading);
         player.on('loadeddata', hideLoading);
         
-        player.on('seeking', () => {
-            showLoading();
-        });
-        
-        player.on('seeked', () => {
-            hideLoading();
-            player.play().catch(() => {});
-            if (hls) {
-                hls.startLoad(player.currentTime);
-            }
-        });
-
         playerElement.addEventListener('touchstart', handleDoubleTap);
         playerElement.addEventListener('click', handleDoubleTap);
         
@@ -347,45 +313,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (playerElement.tagName.toLowerCase() === 'video') {
-        if (source.endsWith('.m3u8')) {
+        if (source && source.endsWith('.m3u8')) {
             if (Hls.isSupported()) {
                 showLoading();
                 
+                // Use simpler HLS config similar to original working version
                 hls = new Hls({
-                    maxBufferLength: 30,
-                    maxMaxBufferLength: 60,
-                    maxBufferSize: 60 * 1000 * 1000,
-                    maxBufferHole: 0.5,
+                    maxBufferLength: 60,
+                    maxMaxBufferLength: 120,
                     startLevel: -1,
                     enableWorker: true,
-                    lowLatencyMode: false,
-                    backBufferLength: 90,
-                    manifestLoadingTimeOut: 10000,
-                    manifestLoadingMaxRetry: 3,
-                    levelLoadingTimeOut: 10000,
-                    levelLoadingMaxRetry: 3,
-                    fragLoadingTimeOut: 20000,
-                    fragLoadingMaxRetry: 6,
-                    abrEwmaDefaultEstimate: 500000,
-                    abrBandWidthFactor: 0.95,
-                    abrBandWidthUpFactor: 0.7,
-                    startPosition: -1
+                    lowLatencyMode: true,
                 });
                 
                 hls.loadSource(source);
                 hls.attachMedia(playerElement);
 
-                hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-                    qualities.length = 0;
-                    data.levels.forEach((level, index) => {
-                        qualities.push(level.height);
-                    });
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
                     initPlyr();
                     hideLoading();
-                });
-
-                hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
-                    console.log('Quality switched to:', data.level);
                 });
 
                 hls.on(Hls.Events.ERROR, (event, data) => {
@@ -408,21 +354,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
 
-                hls.on(Hls.Events.BUFFER_APPENDED, () => {
-                    hideLoading();
-                });
-
             } else if (playerElement.canPlayType('application/vnd.apple.mpegurl')) {
                 playerElement.src = source;
                 initPlyr();
             }
         } else {
+            // MP4 or direct video
             initPlyr();
         }
         
         initGoogleAds();
         
     } else {
+        // For audio or others
         initPlyr();
     }
 
