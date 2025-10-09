@@ -1,5 +1,7 @@
 import re
 import os
+from os import getenv, environ
+from dotenv import load_dotenv
 import asyncio
 import json
 from Adarsh.bot import StreamBot
