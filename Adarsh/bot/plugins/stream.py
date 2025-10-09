@@ -84,105 +84,223 @@ async def process_message(msg, json_output, skipped_messages):
             "reason": str(e)
         })
 
+async def upload_to_github(file_content: str, file_path: str, commit_message: str, token: str) -> bool:
+    """Upload JSON file to GitHub repository"""
+    import base64
+    import requests
+    
+    try:
+        # GitHub API endpoint for creating/updating files
+        api_url = f"https://api.github.com/repos/{file_path}"
+        
+        # Encode content to base64
+        content_encoded = base64.b64encode(file_content.encode()).decode()
+        
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        
+        # Check if file exists to get SHA
+        response = requests.get(api_url, headers=headers)
+        sha = None
+        if response.status_code == 200:
+            sha = response.json().get('sha')
+        
+        # Prepare data
+        data = {
+            "message": commit_message,
+            "content": content_encoded
+        }
+        if sha:
+            data["sha"] = sha
+        
+        # Upload file
+        response = requests.put(api_url, headers=headers, json=data)
+        return response.status_code in [200, 201]
+    except Exception as e:
+        print(f"Error uploading to GitHub: {e}")
+        return False
+
 @StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
 async def batch(client: Client, message: Message):
     Var.reset_batch()
-    json_output = []
-    skipped_messages = []
-
-    # Get first and last messages
+    
     try:
-        first_message = await client.ask(
-            text="Forward the First Message from DB Channel (with Quotes)..\n\nor Send the DB Channel Post Link",
+        # Step 1: Ask for GitHub destination folder
+        dest_folder_msg = await client.ask(
+            text="📁 Enter the GitHub destination folder path:\n\nExample: marrow/anatomy\nFormat: owner/repo/path/to/folder",
             chat_id=message.from_user.id,
-            filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
+            filters=filters.text,
             timeout=60
         )
-        f_msg_id = await get_message_id(client, first_message)
-        if not f_msg_id:
-            await first_message.reply("❌ Error\n\nInvalid Forward or Link. Try again.")
-            return
-
-        second_message = await client.ask(
-            text="Forward the Last Message from DB Channel (with Quotes)..\n\nor Send the DB Channel Post Link",
+        github_dest_folder = dest_folder_msg.text.strip()
+        
+        # Step 2: Ask for links with subjects
+        links_msg = await client.ask(
+            text="📝 Send the links with subjects in this format:\n\n"
+                 "ANATOMY\nF - https://t.me/c/2024354927/237364\nL - https://t.me/c/2024354927/237366\n\n"
+                 "BIOCHEMISTRY\nF - https://t.me/c/2024354927/237460\nL - https://t.me/c/2024354927/237462\n\n"
+                 "Each subject should have F (first) and L (last) message links.",
             chat_id=message.from_user.id,
-            filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
-            timeout=60
+            filters=filters.text,
+            timeout=120
         )
-        s_msg_id = await get_message_id(client, second_message)
-        if not s_msg_id:
-            await second_message.reply("❌ Error\n\nInvalid Forward or Link. Try again.")
-            return
-    except Exception as e:
-        await message.reply(f"❌ Setup Error: {str(e)}")
-        return
-
-    # Determine message range
-    start_id = min(f_msg_id, s_msg_id)
-    end_id = max(f_msg_id, s_msg_id)
-    total_messages = end_id - start_id + 1
-    status_msg = await message.reply_text(f"🚀 Starting batch processing...\nTotal: {total_messages} messages")
-    
-    # Process messages in batches
-    batch_size = 50
-    processed_count = 0
-    
-    for batch_start in range(start_id, end_id + 1, batch_size):
-        batch_end = min(batch_start + batch_size - 1, end_id)
-        msg_ids = list(range(batch_start, batch_end + 1))
         
-        try:
-            messages = await get_messages(client, msg_ids)
-        except Exception as e:
-            messages = []
-            # If batch fetch fails, get messages individually
-            for msg_id in msg_ids:
-                try:
-                    msg = (await get_messages(client, [msg_id]))[0]
-                    messages.append(msg)
-                except:
-                    messages.append(None)
+        # Parse the input
+        links_text = links_msg.text.strip()
+        subjects_data = []
+        current_subject = None
+        current_first = None
+        current_last = None
         
-        for msg in messages:
-            processed_count += 1
-            if not msg:
-                skipped_messages.append({
-                    "id": msg_ids[messages.index(msg)] if msg in messages else "Unknown",
-                    "file_name": "Unknown",
-                    "reason": "Message not found"
-                })
+        for line in links_text.split('\n'):
+            line = line.strip()
+            if not line:
                 continue
+            
+            # Check if it's a subject name (line without F - or L -)
+            if not line.startswith('F -') and not line.startswith('L -'):
+                # Save previous subject if exists
+                if current_subject and current_first and current_last:
+                    subjects_data.append({
+                        'subject': current_subject,
+                        'first': current_first,
+                        'last': current_last
+                    })
+                current_subject = line
+                current_first = None
+                current_last = None
+            elif line.startswith('F -'):
+                current_first = line.replace('F -', '').strip()
+            elif line.startswith('L -'):
+                current_last = line.replace('L -', '').strip()
+        
+        # Add last subject
+        if current_subject and current_first and current_last:
+            subjects_data.append({
+                'subject': current_subject,
+                'first': current_first,
+                'last': current_last
+            })
+        
+        if not subjects_data:
+            await message.reply("❌ No valid subjects found in the input. Please check the format.")
+            return
+        
+        # Get GitHub token from environment
+        git_token = os.environ.get('GIT_TOKEN', '')
+        if not git_token:
+            await message.reply("❌ GIT_TOKEN not found in environment variables. Please add it to repo secrets.")
+            return
+        
+        status_msg = await message.reply_text(f"🚀 Starting batch processing for {len(subjects_data)} subjects...")
+        
+        # Process each subject
+        for idx, subject_info in enumerate(subjects_data, 1):
+            subject_name = subject_info['subject']
+            json_output = []
+            skipped_messages = []
+            
+            try:
+                # Get first and last message IDs
+                f_msg_id = await get_message_id(client, type('obj', (object,), {'text': subject_info['first']})())
+                s_msg_id = await get_message_id(client, type('obj', (object,), {'text': subject_info['last']})())
                 
-            await process_message(msg, json_output, skipped_messages)
-            if processed_count % 10 == 0:
+                if not f_msg_id or not s_msg_id:
+                    await status_msg.edit_text(f"❌ Invalid message IDs for {subject_name}")
+                    continue
+                
+                # Determine message range
+                start_id = min(f_msg_id, s_msg_id)
+                end_id = max(f_msg_id, s_msg_id)
+                total_messages = end_id - start_id + 1
+                
                 await status_msg.edit_text(
-                    f"🔄 Processing...\n"
-                    f"Progress: {processed_count}/{total_messages}\n"
-                    f"Success: {len(json_output)} | Skipped: {len(skipped_messages)}"
+                    f"🔄 Processing {subject_name}...\n"
+                    f"Subject {idx}/{len(subjects_data)}\n"
+                    f"Messages: {total_messages}"
                 )
-
-    # Prepare final output
-    output_data = {
-        "successful": json_output,  # Same format as before
-        "skipped": skipped_messages  # Separate section for errors
-    }
-    
-    # Save to file
-    filename = f"/tmp/batch_output_{message.from_user.id}.json"
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(output_data, f, indent=4, ensure_ascii=False)
-
-    # Send results
-    await client.send_document(
-        chat_id=message.chat.id,
-        document=filename,
-        caption=f"✅ Batch processing complete!\n"
-                f"Total: {total_messages} | "
-                f"Success: {len(json_output)} | "
-                f"Skipped: {len(skipped_messages)}"
-    )
-    await status_msg.delete()
-    os.remove(filename)
+                
+                # Process messages in batches
+                batch_size = 50
+                processed_count = 0
+                
+                for batch_start in range(start_id, end_id + 1, batch_size):
+                    batch_end = min(batch_start + batch_size - 1, end_id)
+                    msg_ids = list(range(batch_start, batch_end + 1))
+                    
+                    try:
+                        messages = await get_messages(client, msg_ids)
+                    except Exception as e:
+                        messages = []
+                        for msg_id in msg_ids:
+                            try:
+                                msg = (await get_messages(client, [msg_id]))[0]
+                                messages.append(msg)
+                            except:
+                                messages.append(None)
+                    
+                    for msg in messages:
+                        processed_count += 1
+                        if not msg:
+                            skipped_messages.append({
+                                "id": "Unknown",
+                                "file_name": "Unknown",
+                                "reason": "Message not found"
+                            })
+                            continue
+                            
+                        await process_message(msg, json_output, skipped_messages)
+                
+                # Prepare JSON output
+                output_data = {
+                    "successful": json_output,
+                    "skipped": skipped_messages
+                }
+                
+                # Save to file
+                json_filename = f"{subject_name}.json"
+                json_content = json.dumps(output_data, indent=4, ensure_ascii=False)
+                
+                # Upload to GitHub
+                github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
+                commit_msg = f"Add {json_filename} - {len(json_output)} files"
+                
+                upload_success = await asyncio.to_thread(
+                    upload_to_github,
+                    json_content,
+                    github_file_path,
+                    commit_msg,
+                    git_token
+                )
+                
+                if upload_success:
+                    await status_msg.edit_text(
+                        f"✅ {subject_name} completed!\n"
+                        f"Uploaded: {json_filename}\n"
+                        f"Success: {len(json_output)} | Skipped: {len(skipped_messages)}\n\n"
+                        f"Progress: {idx}/{len(subjects_data)}"
+                    )
+                else:
+                    await status_msg.edit_text(
+                        f"❌ Failed to upload {subject_name} to GitHub\n"
+                        f"Progress: {idx}/{len(subjects_data)}"
+                    )
+                
+                # Small delay between subjects
+                await asyncio.sleep(1)
+                
+            except Exception as e:
+                await status_msg.edit_text(f"❌ Error processing {subject_name}: {str(e)}")
+                continue
+        
+        await status_msg.edit_text(f"✅ All {len(subjects_data)} subjects processed and uploaded to GitHub!")
+        
+    except asyncio.TimeoutError:
+        await message.reply("⏱️ Request timeout. Please try again.")
+    except Exception as e:
+        await message.reply(f"❌ Error: {str(e)}")
 
 
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
