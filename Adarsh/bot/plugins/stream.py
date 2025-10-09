@@ -88,7 +88,7 @@ async def process_message(msg, json_output, skipped_messages):
 async def upload_to_github(file_content: str, file_path: str, commit_message: str, token: str) -> bool:
     """Upload JSON file to GitHub repository"""
     import base64
-    import requests
+    import aiohttp
     
     try:
         # Parse file_path to extract owner/repo and path
@@ -113,27 +113,29 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
             "Accept": "application/vnd.github.v3+json"
         }
         
-        # Check if file exists to get SHA
-        response = requests.get(api_url, headers=headers)
-        sha = None
-        if response.status_code == 200:
-            sha = response.json().get('sha')
-        
-        # Prepare data
-        data = {
-            "message": commit_message,
-            "content": content_encoded
-        }
-        if sha:
-            data["sha"] = sha
-        
-        # Upload file
-        response = requests.put(api_url, headers=headers, json=data)
-        return response.status_code in [200, 201]
+        async with aiohttp.ClientSession() as session:
+            # Check if file exists to get SHA
+            async with session.get(api_url, headers=headers) as response:
+                sha = None
+                if response.status == 200:
+                    data = await response.json()
+                    sha = data.get('sha')
+            
+            # Prepare data
+            data = {
+                "message": commit_message,
+                "content": content_encoded
+            }
+            if sha:
+                data["sha"] = sha
+            
+            # Upload file
+            async with session.put(api_url, headers=headers, json=data) as response:
+                return response.status in [200, 201]
+                
     except Exception as e:
         print(f"Error uploading to GitHub: {e}")
         return False
-
 @StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
 async def batch(client: Client, message: Message):
     Var.reset_batch()
@@ -286,11 +288,11 @@ async def batch(client: Client, message: Message):
                 json_content = json.dumps(output_data, indent=4, ensure_ascii=False)
                 
                 # Upload to GitHub
+                # Upload to GitHub
                 github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
                 commit_msg = f"Add {json_filename} - {len(json_output)} files"
                 
-                upload_success = await asyncio.to_thread(
-                    upload_to_github,
+                upload_success = await upload_to_github(
                     json_content,
                     github_file_path,
                     commit_msg,
