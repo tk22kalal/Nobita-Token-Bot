@@ -15,6 +15,7 @@ from pyrogram.errors import FloodWait
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from Adarsh.utils.file_properties import get_name, get_hash, get_media_from_message
 from helper_func import encode, get_message_id, decode, get_messages
+from types import SimpleNamespace
 
 db = Database(Var.DATABASE_URL, Var.name)
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
@@ -226,8 +227,11 @@ async def batch(client: Client, message: Message):
             
             try:
                 # Get first and last message IDs
-                f_msg_id = await get_message_id(client, type('obj', (object,), {'text': subject_info['first']})())
-                s_msg_id = await get_message_id(client, type('obj', (object,), {'text': subject_info['last']})())
+                # create a lightweight object that emulates Message-like attributes used by get_message_id
+                f_msg_obj = SimpleNamespace(text=subject_info['first'], forward_from_chat=None, forward_from_message_id=None)
+                s_msg_obj = SimpleNamespace(text=subject_info['last'], forward_from_chat=None, forward_from_message_id=None)
+                f_msg_id = await get_message_id(client, f_msg_obj)
+                s_msg_id = await get_message_id(client, s_msg_obj)
                 
                 if not f_msg_id or not s_msg_id:
                     await status_msg.edit_text(f"❌ Invalid message IDs for {subject_name}")
