@@ -20,7 +20,7 @@ db = Database(Var.DATABASE_URL, Var.name)
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
 PROTECT_CONTENT = os.environ.get('PROTECT_CONTENT', "False") == "True"
 DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True'
-GIT_TOKEN = int(getenv('GIT_TOKEN', ''))
+GIT_TOKEN = os.environ.get('GIT_TOKEN', '')
 
 async def create_intermediate_link(message: Message):
     """Create intermediate link for the message and store data temporarily"""
