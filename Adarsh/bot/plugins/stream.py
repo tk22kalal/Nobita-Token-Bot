@@ -1,7 +1,5 @@
 import re
 import os
-from os import getenv, environ
-from dotenv import load_dotenv
 import asyncio
 import json
 from Adarsh.bot import StreamBot
@@ -15,7 +13,6 @@ from pyrogram.errors import FloodWait
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from Adarsh.utils.file_properties import get_name, get_hash, get_media_from_message
 from helper_func import encode, get_message_id, decode, get_messages
-from types import SimpleNamespace
 
 db = Database(Var.DATABASE_URL, Var.name)
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
@@ -89,25 +86,13 @@ async def process_message(msg, json_output, skipped_messages):
         })
 
 async def upload_to_github(file_content: str, file_path: str, commit_message: str, token: str) -> bool:
-    """Upload JSON file to GitHub repository.
-
-    file_path should be: owner/repo/path/to/folder/filename.json
-    """
+    """Upload JSON file to GitHub repository"""
     import base64
     import requests
-
+    
     try:
-        # Normalize and split the provided path
-        parts = file_path.strip('/').split('/')
-        if len(parts) < 3:
-            # need at least owner/repo/file.json
-            raise ValueError("file_path must be in the form owner/repo/path/to/file.json")
-        owner = parts[0]
-        repo = parts[1]
-        path = '/'.join(parts[2:])
-
-        # GitHub API endpoint for create/update contents
-        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+        # GitHub API endpoint for creating/updating files
+        api_url = f"https://api.github.com/repos/{file_path}"
         
         # Encode content to base64
         content_encoded = base64.b64encode(file_content.encode()).decode()
@@ -122,9 +107,6 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
         sha = None
         if response.status_code == 200:
             sha = response.json().get('sha')
-        elif response.status_code not in (404,):
-            # unexpected error, bubble it up for logs
-            print(f"GitHub API GET returned {response.status_code}: {response.text}")
         
         # Prepare data
         data = {
@@ -136,11 +118,7 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
         
         # Upload file
         response = requests.put(api_url, headers=headers, json=data)
-        if response.status_code in [200, 201]:
-            return True
-        else:
-            print(f"GitHub API PUT failed {response.status_code}: {response.text}")
-            return False
+        return response.status_code in [200, 201]
     except Exception as e:
         print(f"Error uploading to GitHub: {e}")
         return False
@@ -227,11 +205,8 @@ async def batch(client: Client, message: Message):
             
             try:
                 # Get first and last message IDs
-                # create a lightweight object that emulates Message-like attributes used by get_message_id
-                f_msg_obj = SimpleNamespace(text=subject_info['first'], forward_from_chat=None, forward_from_message_id=None)
-                s_msg_obj = SimpleNamespace(text=subject_info['last'], forward_from_chat=None, forward_from_message_id=None)
-                f_msg_id = await get_message_id(client, f_msg_obj)
-                s_msg_id = await get_message_id(client, s_msg_obj)
+                f_msg_id = await get_message_id(client, type('obj', (object,), {'text': subject_info['first']})())
+                s_msg_id = await get_message_id(client, type('obj', (object,), {'text': subject_info['last']})())
                 
                 if not f_msg_id or not s_msg_id:
                     await status_msg.edit_text(f"❌ Invalid message IDs for {subject_name}")
@@ -290,8 +265,6 @@ async def batch(client: Client, message: Message):
                 json_content = json.dumps(output_data, indent=4, ensure_ascii=False)
                 
                 # Upload to GitHub
-                # github_dest_folder expected: owner/repo/path/to/folder
-                # final github_file_path will be owner/repo/path/to/folder/filename.json
                 github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
                 commit_msg = f"Add {json_filename} - {len(json_output)} files"
                 
