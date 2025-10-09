@@ -85,57 +85,78 @@ async def process_message(msg, json_output, skipped_messages):
             "reason": str(e)
         })
 
-async def upload_to_github(file_content: str, file_path: str, commit_message: str, token: str) -> bool:
-    """Upload JSON file to GitHub repository"""
+async def upload_to_github(file_content: str, file_path: str, commit_message: str, token: str, branch: str = None) -> bool:
+    """Upload JSON file to GitHub repository (improved, more robust).
+
+    file_path: expected format "owner/repo/path/to/file.json"
+    Returns True on success, False on failure (logs response text for debugging).
+    """
     import base64
     import aiohttp
-    
+
     try:
-        # Parse file_path to extract owner/repo and path
-        # Expected format: owner/repo/path/to/file.json
-        parts = file_path.split('/', 2)
+        if not token:
+            print("upload_to_github: No token provided")
+            return False
+
+        # Normalize and split path
+        normalized = file_path.strip().lstrip('/').rstrip('/')
+        parts = normalized.split('/', 2)
         if len(parts) < 3:
             print(f"Invalid file path format: {file_path}. Expected: owner/repo/path/to/file")
             return False
-        
-        owner = parts[0]
-        repo = parts[1]
-        path = parts[2]
-        
-        # GitHub API endpoint for creating/updating files
+
+        owner, repo, path = parts[0], parts[1], parts[2]
         api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
-        
-        # Encode content to base64
-        content_encoded = base64.b64encode(file_content.encode()).decode()
-        
+
+        content_encoded = base64.b64encode(file_content.encode('utf-8')).decode('utf-8')
+
         headers = {
-            "Authorization": f"token {token}",
+            "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github.v3+json"
         }
-        
+
         async with aiohttp.ClientSession() as session:
-            # Check if file exists to get SHA
-            async with session.get(api_url, headers=headers) as response:
-                sha = None
-                if response.status == 200:
-                    data = await response.json()
+            # Check if file exists to obtain sha (include branch if provided)
+            params = {}
+            if branch:
+                params['ref'] = branch
+
+            sha = None
+            async with session.get(api_url, headers=headers, params=params) as resp_get:
+                if resp_get.status == 200:
+                    data = await resp_get.json()
                     sha = data.get('sha')
-            
-            # Prepare data
-            data = {
-                "message": commit_message,
+                elif resp_get.status == 404:
+                    sha = None
+                else:
+                    text = await resp_get.text()
+                    print(f"upload_to_github: GET {api_url} returned status {resp_get.status}: {text}")
+                    # proceed; PUT will either create or fail
+
+            payload = {
+                "message": commit_message or "Add file via bot",
                 "content": content_encoded
             }
             if sha:
-                data["sha"] = sha
-            
-            # Upload file
-            async with session.put(api_url, headers=headers, json=data) as response:
-                return response.status in [200, 201]
-                
+                payload["sha"] = sha
+            if branch:
+                payload["branch"] = branch
+
+            async with session.put(api_url, headers=headers, json=payload) as resp_put:
+                text = await resp_put.text()
+                if resp_put.status in (200, 201):
+                    return True
+                else:
+                    # helpful debug log
+                    print(f"upload_to_github: PUT {api_url} returned status {resp_put.status}: {text}")
+                    # Common causes: permission issues, repo not found, token scope missing, path invalid
+                    return False
+
     except Exception as e:
         print(f"Error uploading to GitHub: {e}")
         return False
+
 @StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
 async def batch(client: Client, message: Message):
     Var.reset_batch()
@@ -287,7 +308,6 @@ async def batch(client: Client, message: Message):
                 json_filename = f"{subject_name}.json"
                 json_content = json.dumps(output_data, indent=4, ensure_ascii=False)
                 
-                # Upload to GitHub
                 # Upload to GitHub
                 github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
                 commit_msg = f"Add {json_filename} - {len(json_output)} files"
