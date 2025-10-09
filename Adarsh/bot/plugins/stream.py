@@ -91,8 +91,19 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
     import requests
     
     try:
+        # Parse file_path to extract owner/repo and path
+        # Expected format: owner/repo/path/to/file.json
+        parts = file_path.split('/', 2)
+        if len(parts) < 3:
+            print(f"Invalid file path format: {file_path}. Expected: owner/repo/path/to/file")
+            return False
+        
+        owner = parts[0]
+        repo = parts[1]
+        path = parts[2]
+        
         # GitHub API endpoint for creating/updating files
-        api_url = f"https://api.github.com/repos/{file_path}"
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
         
         # Encode content to base64
         content_encoded = base64.b64encode(file_content.encode()).decode()
@@ -130,7 +141,10 @@ async def batch(client: Client, message: Message):
     try:
         # Step 1: Ask for GitHub destination folder
         dest_folder_msg = await client.ask(
-            text="📁 Enter the GitHub destination folder path:\n\nExample: marrow/anatomy\nFormat: owner/repo/path/to/folder",
+            text="📁 Enter the GitHub destination folder path:\n\n"
+                 "Format: owner/repo/path/to/folder\n"
+                 "Example: username/repository/marrow/anatomy\n\n"
+                 "This is where JSON files will be uploaded.",
             chat_id=message.from_user.id,
             filters=filters.text,
             timeout=60
@@ -204,9 +218,16 @@ async def batch(client: Client, message: Message):
             skipped_messages = []
             
             try:
+                # Create mock message objects for get_message_id
+                class MockMessage:
+                    def __init__(self, text):
+                        self.text = text
+                        self.forward_from_chat = None
+                        self.forward_sender_name = None
+                
                 # Get first and last message IDs
-                f_msg_id = await get_message_id(client, type('obj', (object,), {'text': subject_info['first']})())
-                s_msg_id = await get_message_id(client, type('obj', (object,), {'text': subject_info['last']})())
+                f_msg_id = await get_message_id(client, MockMessage(subject_info['first']))
+                s_msg_id = await get_message_id(client, MockMessage(subject_info['last']))
                 
                 if not f_msg_id or not s_msg_id:
                     await status_msg.edit_text(f"❌ Invalid message IDs for {subject_name}")
