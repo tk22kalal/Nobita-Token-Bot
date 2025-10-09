@@ -85,13 +85,25 @@ async def process_message(msg, json_output, skipped_messages):
         })
 
 async def upload_to_github(file_content: str, file_path: str, commit_message: str, token: str) -> bool:
-    """Upload JSON file to GitHub repository"""
+    """Upload JSON file to GitHub repository.
+
+    file_path should be: owner/repo/path/to/folder/filename.json
+    """
     import base64
     import requests
-    
+
     try:
-        # GitHub API endpoint for creating/updating files
-        api_url = f"https://api.github.com/repos/{file_path}"
+        # Normalize and split the provided path
+        parts = file_path.strip('/').split('/')
+        if len(parts) < 3:
+            # need at least owner/repo/file.json
+            raise ValueError("file_path must be in the form owner/repo/path/to/file.json")
+        owner = parts[0]
+        repo = parts[1]
+        path = '/'.join(parts[2:])
+
+        # GitHub API endpoint for create/update contents
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
         
         # Encode content to base64
         content_encoded = base64.b64encode(file_content.encode()).decode()
@@ -106,6 +118,9 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
         sha = None
         if response.status_code == 200:
             sha = response.json().get('sha')
+        elif response.status_code not in (404,):
+            # unexpected error, bubble it up for logs
+            print(f"GitHub API GET returned {response.status_code}: {response.text}")
         
         # Prepare data
         data = {
@@ -117,7 +132,11 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
         
         # Upload file
         response = requests.put(api_url, headers=headers, json=data)
-        return response.status_code in [200, 201]
+        if response.status_code in [200, 201]:
+            return True
+        else:
+            print(f"GitHub API PUT failed {response.status_code}: {response.text}")
+            return False
     except Exception as e:
         print(f"Error uploading to GitHub: {e}")
         return False
@@ -264,6 +283,8 @@ async def batch(client: Client, message: Message):
                 json_content = json.dumps(output_data, indent=4, ensure_ascii=False)
                 
                 # Upload to GitHub
+                # github_dest_folder expected: owner/repo/path/to/folder
+                # final github_file_path will be owner/repo/path/to/folder/filename.json
                 github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
                 commit_msg = f"Add {json_filename} - {len(json_output)} files"
                 
