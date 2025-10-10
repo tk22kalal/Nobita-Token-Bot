@@ -299,9 +299,11 @@ async def batch(client: Client, message: Message):
                         await process_message(msg, json_output, skipped_messages)
                 
                 # Prepare JSON output
+                # Prepare JSON output in the required format
                 output_data = {
-                    "successful": json_output,
-                    "skipped": skipped_messages
+                    "subjectName": subject_name.lower().replace(" ", ""),
+                    "lectures": json_output,       # successful processed lectures
+                    "skipped": skipped_messages    # skipped messages separately
                 }
                 
                 # Save to file
@@ -310,7 +312,7 @@ async def batch(client: Client, message: Message):
                 
                 # Upload to GitHub
                 github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
-                commit_msg = f"Add {json_filename} - {len(json_output)} files"
+                commit_msg = f"Add {json_filename} - {len(json_output)} lectures, {len(skipped_messages)} skipped"
                 
                 upload_success = await upload_to_github(
                     json_content,
@@ -318,6 +320,7 @@ async def batch(client: Client, message: Message):
                     commit_msg,
                     git_token
                 )
+
                 
                 if upload_success:
                     await status_msg.edit_text(
