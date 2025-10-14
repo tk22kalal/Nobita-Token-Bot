@@ -26,14 +26,20 @@ async def create_intermediate_link(message: Message):
     media = get_media_from_message(message)
     if not media:
         raise ValueError("No media found in message")
-    
-    # Prepare caption
+
     caption = ""
     if message.caption:
         caption = message.caption.html
-        caption = re.sub(r'@[\w_]+|http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', caption)
-        caption = re.sub(r'\s+', ' ', caption.strip())
+        # Remove @mentions and all kinds of links (http, https, t.me, telegram.me)
+        caption = re.sub(
+            r'@[\w_]+|(?:https?://|t\.me/|telegram\.me/)[^\s]+',
+            '',
+            caption
+        )
+        # Remove hashtags like #MBBS
         caption = re.sub(r'\s*#\w+', '', caption)
+        # Clean up extra spaces
+        caption = re.sub(r'\s+', ' ', caption.strip())
     
     if not caption:
         caption = get_name(message) or "NEXTPULSE"
