@@ -50,27 +50,17 @@ def get_hash(media_msg: Message) -> str:
     media = get_media_from_message(media_msg)
     return getattr(media, "file_unique_id", "")[:6]
 
-import re
-from pyrogram.types import Message
-
 def get_name(media_msg: Message) -> str:
     media = get_media_from_message(media_msg)
-
-    # 1. Try caption first
-    if media_msg.caption:
-        caption = media_msg.caption.html
-        caption = re.sub(r'(https?://\S+|@\w+|#\w+)', '', caption)
-        caption = re.sub(r'\s+', ' ', caption.strip())
-        if caption:
-            return caption
-
-    # 2. If caption is missing or empty, use file name
     file_name = getattr(media, 'file_name', "")
+
     if file_name:
         return file_name
+    elif media_msg.caption:
+        return media_msg.caption.html
+    else:
+        return "NEXTPULSE"
 
-    # 3. Fallback
-    return "NEXTPULSE"
         
 def get_media_file_size(m):
     media = get_media_from_message(m)
