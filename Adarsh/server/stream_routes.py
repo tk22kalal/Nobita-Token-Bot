@@ -239,8 +239,9 @@ async def stream_handler(request: web.Request):
         raise web.HTTPForbidden(text=e.message)
     except FIleNotFound as e:
         raise web.HTTPNotFound(text=e.message)
-    except (AttributeError, BadStatusLine, ConnectionResetError):
-        pass
+    except (AttributeError, BadStatusLine, ConnectionResetError) as e:
+        logging.warning(f"Transient error while handling /watch request for path {request.path}: {e}")
+        return web.Response(status=503, text="Service temporarily unavailable")
     except Exception as e:
         logging.critical(e.with_traceback(None))
         raise web.HTTPInternalServerError(text=str(e))
@@ -261,8 +262,9 @@ async def stream_handler(request: web.Request):
         raise web.HTTPForbidden(text=e.message)
     except FIleNotFound as e:
         raise web.HTTPNotFound(text=e.message)
-    except (AttributeError, BadStatusLine, ConnectionResetError):
-        pass
+    except (AttributeError, BadStatusLine, ConnectionResetError) as e:
+        logging.warning(f"Transient error while handling request for path {request.path}: {e}")
+        return web.Response(status=503, text="Service temporarily unavailable")
     except Exception as e:
         logging.critical(e.with_traceback(None))
         raise web.HTTPInternalServerError(text=str(e))
