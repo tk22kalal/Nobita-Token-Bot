@@ -15,3 +15,12 @@ gunicorn<= 21.2.0
 asyncio
 openpyxl
 pillow
+aiofiles
+aiohttp
+apscheduler
+asyncio
+dnspython
+jinja2
+motor
+openpyxl
+psutil
