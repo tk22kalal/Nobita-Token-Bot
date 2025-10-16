@@ -147,11 +147,17 @@ async def generate_stream_handler(request: web.Request):
         else:
             return web.json_response({"error": "Max retries exceeded for FloodWait"}, status=429)
         
-        # Generate streaming URL
+        # Generate streaming URL with /watch/ prefix for stream links
         file_name = get_name(log_msg) or temp_data['file_name'] or "NEXTPULSE"
         file_hash = get_hash(log_msg)
-        fqdn_url = Var.get_url_for_file(str(log_msg.id))
-        stream_link = f"{fqdn_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
+        
+        # Use base URL without domain rotation for consistent links
+        if Var.HAS_SSL:
+            base_url = f"https://{Var.FQDN}/"
+        else:
+            base_url = f"http://{Var.FQDN}/"
+        
+        stream_link = f"{base_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
         
         # Keep temporary data for permanent links
         # await db.delete_temp_file(token)  # Commented out to make links permanent
@@ -203,11 +209,17 @@ async def generate_download_handler(request: web.Request):
         else:
             return web.json_response({"error": "Max retries exceeded for FloodWait"}, status=429)
         
-        # Generate download URL with download=1 parameter
+        # Generate download URL with download=1 parameter (direct file link, not /watch/)
         file_name = get_name(log_msg) or temp_data['file_name'] or "NEXTPULSE"
         file_hash = get_hash(log_msg)
-        fqdn_url = Var.get_url_for_file(str(log_msg.id))
-        download_link = f"{fqdn_url}{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}&download=1"
+        
+        # Use base URL for download links
+        if Var.HAS_SSL:
+            base_url = f"https://{Var.FQDN}/"
+        else:
+            base_url = f"http://{Var.FQDN}/"
+        
+        download_link = f"{base_url}{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}&download=1"
         
         # Keep temporary data for permanent links (don't delete)
         # await db.delete_temp_file(token)  # Commented out to make links permanent
