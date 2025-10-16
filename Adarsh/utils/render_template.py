@@ -35,8 +35,22 @@ async def render_page(id, secure_hash, src=None):
     with open(template_file) as f:
         template = jinja2.Template(f.read())
 
+    # Sanitize file name for display - remove links, @mentions, #tags, HTML tags
+    import re
+    display_name = file_data.file_name.replace("_", " ")
+    # Remove HTML tags
+    display_name = re.sub(r'<[^>]+>', '', display_name)
+    # Remove @mentions
+    display_name = re.sub(r'@[\w_]+', '', display_name)
+    # Remove all kinds of links
+    display_name = re.sub(r'(?:https?://|t\.me/|telegram\.me/)[^\s]+', '', display_name)
+    # Remove hashtags
+    display_name = re.sub(r'\s*#\w+', '', display_name)
+    # Clean up extra spaces
+    display_name = re.sub(r'\s+', ' ', display_name.strip())
+    
     return template.render(
-        file_name=file_data.file_name.replace("_", " "),
+        file_name=display_name,
         file_url=src,
         file_size=file_size,
         tag=tag,
