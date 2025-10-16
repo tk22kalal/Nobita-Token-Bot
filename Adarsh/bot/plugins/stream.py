@@ -20,6 +20,22 @@ PROTECT_CONTENT = os.environ.get('PROTECT_CONTENT', "False") == "True"
 DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True'
 GIT_TOKEN = os.environ.get('GIT_TOKEN', '')
 
+def sanitize_caption(text: str) -> str:
+    """Sanitize caption by removing HTML tags, links, @mentions, and hashtags"""
+    if not text:
+        return text
+    # Remove HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Remove @mentions
+    text = re.sub(r'@[\w_]+', '', text)
+    # Remove all kinds of links
+    text = re.sub(r'(?:https?://|t\.me/|telegram\.me/)[^\s]+', '', text)
+    # Remove hashtags
+    text = re.sub(r'\s*#\w+', '', text)
+    # Clean up extra spaces
+    text = re.sub(r'\s+', ' ', text.strip())
+    return text
+
 async def create_intermediate_link(message: Message):
     """Create intermediate link for the message and store data temporarily"""
     # Extract file information
@@ -27,22 +43,23 @@ async def create_intermediate_link(message: Message):
     if not media:
         raise ValueError("No media found in message")
 
+    # Get caption with fallback chain and sanitization
     caption = ""
-    if message.caption:
-        caption = message.caption.html
-        # Remove @mentions and all kinds of links (http, https, t.me, telegram.me)
-        caption = re.sub(
-            r'@[\w_]+|(?:https?://|t\.me/|telegram\.me/)[^\s]+',
-            '',
-            caption
-        )
-        # Remove hashtags like #MBBS
-        caption = re.sub(r'\s*#\w+', '', caption)
-        # Clean up extra spaces
-        caption = re.sub(r'\s+', ' ', caption.strip())
     
-    if not caption:
-        caption = get_name(message) or "NEXTPULSE"
+    # Try message caption first
+    if message.caption:
+        caption = sanitize_caption(message.caption.html)
+    
+    # Fallback to filename if caption is empty after sanitization
+    if not caption or not caption.strip():
+        filename = getattr(media, 'file_name', None) or get_name(message)
+        if filename:
+            caption = sanitize_caption(filename)
+    
+    # Fallback to random name if still empty
+    if not caption or not caption.strip():
+        import secrets
+        caption = f"file_{secrets.token_hex(4)}"
     
     # Prepare message data for temporary storage
     message_data = {
@@ -70,15 +87,23 @@ async def create_intermediate_link_for_batch(message: Message):
         if not media:
             raise ValueError("No media found in message")
 
+        # Get caption with fallback chain and sanitization
         caption = ""
-        if message.caption:
-            caption = message.caption.html
-            caption = re.sub(r'@[\w_]+|(?:https?://|t\.me/|telegram\.me/)[^\s]+', '', caption)
-            caption = re.sub(r'\s*#\w+', '', caption)
-            caption = re.sub(r'\s+', ' ', caption.strip())
         
-        if not caption:
-            caption = get_name(message) or "NEXTPULSE"
+        # Try message caption first
+        if message.caption:
+            caption = sanitize_caption(message.caption.html)
+        
+        # Fallback to filename if caption is empty after sanitization
+        if not caption or not caption.strip():
+            filename = getattr(media, 'file_name', None) or get_name(message)
+            if filename:
+                caption = sanitize_caption(filename)
+        
+        # Fallback to random name if still empty
+        if not caption or not caption.strip():
+            import secrets
+            caption = f"file_{secrets.token_hex(4)}"
         
         message_data = {
             'message_id': message.id,
