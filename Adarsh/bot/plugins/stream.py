@@ -18,7 +18,7 @@ db = Database(Var.DATABASE_URL, Var.name)
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
 PROTECT_CONTENT = os.environ.get('PROTECT_CONTENT', "False") == "True"
 DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True'
-GIT_TOKEN = "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"
+GIT_TOKEN = os.environ.get('GIT_TOKEN', '')
 
 async def create_intermediate_link(message: Message):
     """Create intermediate link for the message and store data temporarily"""
@@ -273,7 +273,13 @@ async def batch(client: Client, message: Message):
         # Get GitHub token from environment
         git_token = os.environ.get('GIT_TOKEN', '')
         if not git_token:
-            await message.reply("❌ GIT_TOKEN not found in environment variables. Please add it to repo secrets.")
+            await message.reply(
+                "❌ GIT_TOKEN not found in environment variables.\n\n"
+                "Please add your GitHub Personal Access Token with repo permissions:\n"
+                "1. Go to GitHub Settings → Developer settings → Personal access tokens\n"
+                "2. Generate new token (classic) with 'repo' scope\n"
+                "3. Add GIT_TOKEN to your environment variables"
+            )
             return
         
         status_msg = await message.reply_text(f"🚀 Starting batch processing for {len(subjects_data)} subjects...")
@@ -364,7 +370,6 @@ async def batch(client: Client, message: Message):
                     commit_msg,
                     git_token
                 )
-
                 
                 if upload_success:
                     await status_msg.edit_text(
