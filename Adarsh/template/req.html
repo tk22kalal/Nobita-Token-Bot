@@ -182,6 +182,7 @@
             preload="auto"
             playsinline
             controlsList="nodownload"
+            oncontextmenu="return false;"
             crossorigin="anonymous">
             <source src="{{ file_url }}" type="application/x-mpegURL">
         </{{ tag }}>
@@ -414,8 +415,38 @@
     style.textContent = `
         .video-js *[download] { display: none !important; }
         .vjs-control-bar a[download] { display: none !important; }
+        video { pointer-events: auto !important; }
+        video::-webkit-media-controls-download-button { display: none !important; }
+        video::-webkit-media-controls-enclosure { overflow: hidden !important; }
+        video::-internal-media-controls-download-button { display: none !important; }
     `;
     document.head.appendChild(style);
+    
+    // Prevent context menu (right-click and long-press) on video element
+    playerElement.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    }, true);
+    
+    // Prevent long-press on mobile
+    let pressTimer;
+    playerElement.addEventListener('touchstart', function(e) {
+        if (e.target.tagName.toLowerCase() === 'video') {
+            pressTimer = setTimeout(function() {
+                e.preventDefault();
+                e.stopPropagation();
+            }, 500);
+        }
+    });
+    
+    playerElement.addEventListener('touchend', function() {
+        clearTimeout(pressTimer);
+    });
+    
+    playerElement.addEventListener('touchmove', function() {
+        clearTimeout(pressTimer);
+    });
     
 })();
 </script>
