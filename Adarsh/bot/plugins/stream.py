@@ -64,12 +64,50 @@ async def create_intermediate_link(message: Message):
     return intermediate_link, caption
 
 async def create_intermediate_link_for_batch(message: Message):
-    """Create intermediate link for batch processing"""
-    intermediate_link, caption = await create_intermediate_link(message)
-    return {
-        "title": caption,
-        "streamingUrl": intermediate_link  # This is now an intermediate link, not a direct stream
-    }
+    """Create both stream and download links for batch processing"""
+    try:
+        from pyrogram.errors import FloodWait
+        import asyncio
+        
+        caption = ""
+        if message.caption:
+            caption = message.caption.html
+            caption = re.sub(r'@[\w_]+|(?:https?://|t\.me/|telegram\.me/)[^\s]+', '', caption)
+            caption = re.sub(r'\s*#\w+', '', caption)
+            caption = re.sub(r'\s+', ' ', caption.strip())
+        
+        if not caption:
+            caption = get_name(message) or "NEXTPULSE"
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                log_msg = await message.copy(
+                    chat_id=Var.BIN_CHANNEL,
+                    caption=caption[:1024],
+                    parse_mode=ParseMode.HTML
+                )
+                break
+            except FloodWait as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(e.x)
+                else:
+                    raise
+        
+        file_name = get_name(log_msg) or caption or "NEXTPULSE"
+        file_hash = get_hash(log_msg)
+        fqdn_url = Var.get_url_for_file(str(log_msg.id))
+        
+        stream_link = f"{fqdn_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
+        download_link = f"{fqdn_url}{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}&download=1"
+        
+        return {
+            "title": caption,
+            "streamingUrl": stream_link,
+            "downloadUrl": download_link
+        }
+    except Exception as e:
+        raise ValueError(f"Failed to create links: {str(e)}")
 
 async def process_message(msg, json_output, skipped_messages):
     """Process individual message and create intermediate link (updated for new system)"""
