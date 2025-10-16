@@ -64,11 +64,12 @@ async def create_intermediate_link(message: Message):
     return intermediate_link, caption
 
 async def create_intermediate_link_for_batch(message: Message):
-    """Create both stream and download links for batch processing"""
+    """Create intermediate links for batch processing - both stream and download"""
     try:
-        from pyrogram.errors import FloodWait
-        import asyncio
-        
+        media = get_media_from_message(message)
+        if not media:
+            raise ValueError("No media found in message")
+
         caption = ""
         if message.caption:
             caption = message.caption.html
@@ -79,27 +80,20 @@ async def create_intermediate_link_for_batch(message: Message):
         if not caption:
             caption = get_name(message) or "NEXTPULSE"
         
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                log_msg = await message.copy(
-                    chat_id=Var.BIN_CHANNEL,
-                    caption=caption[:1024],
-                    parse_mode=ParseMode.HTML
-                )
-                break
-            except FloodWait as e:
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(e.x)
-                else:
-                    raise
+        message_data = {
+            'message_id': message.id,
+            'file_name': getattr(media, 'file_name', None) or get_name(message),
+            'file_size': getattr(media, 'file_size', 0),
+            'mime_type': getattr(media, 'mime_type', 'application/octet-stream'),
+            'caption': caption,
+            'from_chat_id': message.chat.id,
+            'file_unique_id': getattr(media, 'file_unique_id', '')
+        }
         
-        file_name = get_name(log_msg) or caption or "NEXTPULSE"
-        file_hash = get_hash(log_msg)
-        fqdn_url = Var.get_url_for_file(str(log_msg.id))
+        token = await db.store_temp_file(message_data)
         
-        stream_link = f"{fqdn_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
-        download_link = f"{fqdn_url}{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}&download=1"
+        stream_link = f"{Var.URL}prepare/{token}?type=stream"
+        download_link = f"{Var.URL}prepare/{token}?type=download"
         
         return {
             "title": caption,
@@ -107,7 +101,7 @@ async def create_intermediate_link_for_batch(message: Message):
             "downloadUrl": download_link
         }
     except Exception as e:
-        raise ValueError(f"Failed to create links: {str(e)}")
+        raise ValueError(f"Failed to create intermediate links: {str(e)}")
 
 async def process_message(msg, json_output, skipped_messages):
     """Process individual message and create intermediate link (updated for new system)"""
