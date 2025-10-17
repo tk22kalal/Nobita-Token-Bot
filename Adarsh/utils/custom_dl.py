@@ -182,12 +182,44 @@ class ByteStreamer:
         current_part = 1
         location = await self.get_location(file_id)
 
+        max_retries = 3
+
+        async def _send_with_retries(loc, off, lim):
+            """
+            Helper to send GetFile requests with retries on connection errors.
+            Recreates media session and retries a few times before giving up.
+            FloodWait is re-raised to be handled by outer scope.
+            """
+            nonlocal media_session
+            attempts = 0
+            while True:
+                try:
+                    return await media_session.send(
+                        raw.functions.upload.GetFile(location=loc, offset=off, limit=lim)
+                    )
+                except FloodWait:
+                    # Let outer handler manage FloodWait (so sleeping and retrying whole generator)
+                    raise
+                except (OSError, ConnectionResetError) as e:
+                    attempts += 1
+                    logging.warning(f"Transport error while getting file (attempt {attempts}): {e!r}")
+                    # stop and remove the broken media session so it will be recreated
+                    try:
+                        await media_session.stop()
+                    except Exception:
+                        logging.debug("Error while stopping media session after connection error.", exc_info=True)
+                    client.media_sessions.pop(file_id.dc_id, None)
+                    if attempts > max_retries:
+                        logging.error("Max retries reached while trying to recover media session.")
+                        raise
+                    await asyncio.sleep(2 ** attempts)
+                    # recreate session
+                    media_session = await self.generate_media_session(client, file_id)
+                    continue
+
         try:
-            r = await media_session.send(
-                raw.functions.upload.GetFile(
-                    location=location, offset=offset, limit=chunk_size
-                ),
-            )
+            # initial request (with retries)
+            r = await _send_with_retries(location, offset, chunk_size)
             if isinstance(r, raw.types.upload.File):
                 while True:
                     chunk = r.bytes
@@ -208,22 +240,24 @@ class ByteStreamer:
                     if current_part > part_count:
                         break
 
-                    await asyncio.sleep(0.5) # Add a delay to avoid FloodWait
-                    r = await media_session.send(
-                        raw.functions.upload.GetFile(
-                            location=location, offset=offset, limit=chunk_size
-                        ),
-                    )
+                    await asyncio.sleep(0.5)  # Add a delay to avoid FloodWait
+                    # request next part (with retries)
+                    r = await _send_with_retries(location, offset, chunk_size)
         except FloodWait as e:
-            logging.warning(f"FloodWait: {e.x} seconds. Retrying...")
+            logging.warning(f"FloodWait: {e.x} seconds. Sleeping then retrying generator...")
             await asyncio.sleep(e.x)
-            yield await self.yield_file(
+            # After sleeping, resume streaming by delegating to a fresh call of this generator.
+            async for inner_chunk in self.yield_file(
                 file_id, index, offset, first_part_cut, last_part_cut, part_count, chunk_size
-            )
-        except (TimeoutError, AttributeError):
-            pass
+            ):
+                yield inner_chunk
+        except (TimeoutError, AttributeError) as exc:
+            logging.debug("Timeout or attribute error while streaming file.", exc_info=True)
+        except Exception as exc:
+            # Log unexpected exceptions instead of letting aiohttp crash without context
+            logging.exception("Unexpected error while yielding file: %s", exc)
         finally:
-            logging.debug("Finished yielding file with {current_part} parts.")
+            logging.debug(f"Finished yielding file with {max(0, current_part - 1)} parts.")
             work_loads[index] -= 1
 
     
