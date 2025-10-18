@@ -69,13 +69,46 @@ async def favicon_handler(_):
     return web.Response(status=204)
 
 
+@routes.get("/robots.txt")
+async def robots_handler(_):
+    """Serve robots.txt to allow Google bots and other crawlers"""
+    try:
+        with open("robots.txt", "r") as f:
+            content = f.read()
+        return web.Response(text=content, content_type="text/plain")
+    except FileNotFoundError:
+        # Fallback if robots.txt doesn't exist
+        return web.Response(
+            text="User-agent: *\nAllow: /\n",
+            content_type="text/plain"
+        )
+
+
+@routes.route("*", "/{path:.*}")
+async def options_handler(request: web.Request):
+    """Handle OPTIONS preflight requests for CORS (iOS Safari compatibility)"""
+    if request.method == "OPTIONS":
+        return web.Response(
+            status=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                "Access-Control-Allow-Headers": "Range, Content-Range, Content-Length",
+                "Access-Control-Max-Age": "86400",
+                "X-Frame-Options": "ALLOWALL",
+                "Content-Security-Policy": "frame-ancestors *",
+            }
+        )
+    raise web.HTTPNotFound()
+
+
 @routes.get("/", allow_head=True)
 async def root_route_handler(_):
     telegram_bot = "Not connected"
     if hasattr(StreamBot, 'username') and StreamBot.username:
         telegram_bot = "@" + StreamBot.username
         
-    return web.json_response(
+    response = web.json_response(
         {
             "server_status": "running",
             "uptime": get_readable_time(int(time.time() - StartTime)),
@@ -90,6 +123,10 @@ async def root_route_handler(_):
             "version": __version__,
         }
     )
+    # Add iframe-friendly headers
+    response.headers["X-Frame-Options"] = "ALLOWALL"
+    response.headers["Content-Security-Policy"] = "frame-ancestors *"
+    return response
 
 
 @routes.get(r"/prepare/{token}", allow_head=True)
@@ -104,7 +141,11 @@ async def prepare_stream_handler(request: web.Request):
             return web.Response(text="❌ Link expired or not found", status=404)
         
         # Render intermediate page template
-        return web.Response(text=await render_prepare_page(temp_data), content_type='text/html')
+        response = web.Response(text=await render_prepare_page(temp_data), content_type='text/html')
+        # Add iframe-friendly headers
+        response.headers["X-Frame-Options"] = "ALLOWALL"
+        response.headers["Content-Security-Policy"] = "frame-ancestors *"
+        return response
         
     except Exception as e:
         logging.error(f"Error in prepare_stream_handler: {e}")
@@ -246,7 +287,11 @@ async def stream_handler(request: web.Request):
         else:
             id = int(re.search(r"(\d+)(?:\/\S+)?", path).group(1))
             secure_hash = request.rel_url.query.get("hash")
-        return web.Response(text=await render_page(id, secure_hash), content_type='text/html')
+        response = web.Response(text=await render_page(id, secure_hash), content_type='text/html')
+        # Add iframe-friendly headers for iOS compatibility
+        response.headers["X-Frame-Options"] = "ALLOWALL"
+        response.headers["Content-Security-Policy"] = "frame-ancestors *"
+        return response
     except InvalidHash as e:
         raise web.HTTPForbidden(text=e.message)
     except FIleNotFound as e:
@@ -362,7 +407,7 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
             mime_type = "application/octet-stream"
             file_name = f"{secrets.token_hex(2)}.unknown"
 
-    # Enhanced headers for better proxy compatibility and streaming
+    # Enhanced headers for better proxy compatibility, streaming, and iOS iframe support
     headers = {
         "Content-Type": f"{mime_type}",
         "Content-Range": f"bytes {from_bytes}-{until_bytes}/{file_size}",
@@ -374,8 +419,11 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         "Access-Control-Allow-Headers": "Range, Content-Range, Content-Length",
         "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+        "Access-Control-Allow-Credentials": "true",  # Allow credentials for iOS
         "X-Content-Type-Options": "nosniff",
         "X-Forwarded-For": request.remote,  # Preserve original IP for Cloudflare
+        "X-Frame-Options": "ALLOWALL",  # Allow iframe embedding for all domains (iOS compatibility)
+        "Content-Security-Policy": "frame-ancestors *",  # Allow embedding in any iframe (iOS/Safari)
     }
 
     return web.Response(
