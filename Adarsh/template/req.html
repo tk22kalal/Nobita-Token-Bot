@@ -181,9 +181,12 @@
             controls 
             preload="auto"
             playsinline
+            webkit-playsinline
+            x-webkit-airplay="allow"
             controlsList="nodownload"
             oncontextmenu="return false;"
-            crossorigin="anonymous">
+            crossorigin="anonymous"
+            muted>
             <source src="{{ file_url }}" type="application/x-mpegURL">
         </{{ tag }}>
     </div>
@@ -314,6 +317,8 @@
         autoplay: false,
         preload: 'auto',
         fluid: false,
+        muted: false,
+        playsinline: true,
         playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
         controlBar: {
             children: [
@@ -331,18 +336,19 @@
         },
         html5: {
             vhs: {
-                overrideNative: true,
+                overrideNative: !videojs.browser.IS_IOS && !videojs.browser.IS_SAFARI,
                 enableLowInitialPlaylist: true,
                 smoothQualityChange: true,
                 useBandwidthFromLocalStorage: true,
                 bandwidth: 4194304,
                 handleManifestRedirects: true,
                 limitRenditionByPlayerDimensions: false,
-                useDevicePixelRatio: true
+                useDevicePixelRatio: true,
+                withCredentials: false
             },
-            nativeVideoTracks: false,
-            nativeAudioTracks: false,
-            nativeTextTracks: false
+            nativeVideoTracks: videojs.browser.IS_IOS || videojs.browser.IS_SAFARI,
+            nativeAudioTracks: videojs.browser.IS_IOS || videojs.browser.IS_SAFARI,
+            nativeTextTracks: videojs.browser.IS_IOS || videojs.browser.IS_SAFARI
         }
     };
     
