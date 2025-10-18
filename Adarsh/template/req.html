@@ -185,8 +185,7 @@
             x-webkit-airplay="allow"
             controlsList="nodownload"
             oncontextmenu="return false;"
-            crossorigin="anonymous"
-            muted>
+            crossorigin="anonymous">
             <source src="{{ file_url }}" type="application/x-mpegURL">
         </{{ tag }}>
     </div>
@@ -317,7 +316,6 @@
         autoplay: false,
         preload: 'auto',
         fluid: false,
-        muted: false,
         playsinline: true,
         playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
         controlBar: {
@@ -336,7 +334,7 @@
         },
         html5: {
             vhs: {
-                overrideNative: !videojs.browser.IS_IOS && !videojs.browser.IS_SAFARI,
+                overrideNative: true,
                 enableLowInitialPlaylist: true,
                 smoothQualityChange: true,
                 useBandwidthFromLocalStorage: true,
@@ -346,9 +344,9 @@
                 useDevicePixelRatio: true,
                 withCredentials: false
             },
-            nativeVideoTracks: videojs.browser.IS_IOS || videojs.browser.IS_SAFARI,
-            nativeAudioTracks: videojs.browser.IS_IOS || videojs.browser.IS_SAFARI,
-            nativeTextTracks: videojs.browser.IS_IOS || videojs.browser.IS_SAFARI
+            nativeVideoTracks: false,
+            nativeAudioTracks: false,
+            nativeTextTracks: false
         }
     };
     
