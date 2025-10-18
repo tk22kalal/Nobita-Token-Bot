@@ -17,5 +17,3 @@ Allow: /
 User-agent: AdsBot-Google
 Allow: /
 
-# Sitemap (if you have one)
-# Sitemap: https://yourdomain.com/sitemap.xml
