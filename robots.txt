@@ -1,0 +1,21 @@
+
+
+# Allow all bots including Google AdSense crawlers
+User-agent: *
+Allow: /
+
+# Specific rules for Google bots
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: Mediapartners-Google
+Allow: /
+
+User-agent: AdsBot-Google
+Allow: /
+
+# Sitemap (if you have one)
+# Sitemap: https://yourdomain.com/sitemap.xml
