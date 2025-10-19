@@ -131,6 +131,8 @@ async def generate_stream_handler(request: web.Request):
     """API endpoint to generate actual stream link by copying to BIN_CHANNEL"""
     try:
         token = request.match_info["token"]
+        # Get player choice from query parameter (plyr or videojs)
+        player = request.rel_url.query.get("player", "plyr")
         
         # Get file data from database
         temp_data = await db.get_temp_file(token)
@@ -172,7 +174,8 @@ async def generate_stream_handler(request: web.Request):
         else:
             base_url = f"http://{Var.FQDN}/"
         
-        stream_link = f"{base_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}"
+        # Include player parameter in stream URL
+        stream_link = f"{base_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}&player={player}"
         
         # Keep temporary data for permanent links
         # await db.delete_temp_file(token)  # Commented out to make links permanent
@@ -261,7 +264,9 @@ async def stream_handler(request: web.Request):
         else:
             id = int(re.search(r"(\d+)(?:\/\S+)?", path).group(1))
             secure_hash = request.rel_url.query.get("hash")
-        return web.Response(text=await render_page(id, secure_hash), content_type='text/html')
+        # Get player choice from query parameter (None allows fallback to env var)
+        player = request.rel_url.query.get("player")
+        return web.Response(text=await render_page(id, secure_hash, player=player), content_type='text/html')
     except InvalidHash as e:
         raise web.HTTPForbidden(text=e.message)
     except FIleNotFound as e:
