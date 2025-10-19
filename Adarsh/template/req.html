@@ -2,50 +2,287 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sample Video File</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>{{ file_name }}</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;600;700&family=Delius&display=swap" rel="stylesheet">
+    
     <!-- Plyr CSS -->
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    
+    <!-- HLS.js for HLS streaming support -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
             padding: 0;
-            background: #000;
-            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            font-family: 'Raleway', sans-serif;
+            overflow-x: hidden;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* Marquee file name display */
+        .file-info {
+            background: linear-gradient(90deg, rgba(26, 26, 46, 0.9), rgba(46, 46, 86, 0.9));
+            padding: 15px;
+            border-radius: 12px 12px 0 0;
+            margin-bottom: -8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .file-name-marquee {
+            font-family: 'Delius', cursive;
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            animation: marquee 15s linear infinite;
+            display: inline-block;
+            padding-left: 100%;
+        }
+
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-100%); }
+        }
+
+        .file-info:hover .file-name-marquee {
+            animation-play-state: paused;
         }
         
-        .plyr {
+        .player-wrapper {
+            position: relative;
             border-radius: 8px;
             overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Custom Plyr styling */
+        .plyr {
+            border-radius: 0 0 12px 12px;
+        }
+
+        .plyr__control--overlaid {
+            background: rgba(123, 97, 255, 0.9);
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            width: 80px;
+            height: 80px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(123, 97, 255, 0.6);
+        }
+
+        .plyr__control--overlaid:hover {
+            background: rgba(123, 97, 255, 1);
+            transform: scale(1.1);
+        }
+
+        .plyr__controls {
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0.8), transparent);
+            padding: 15px;
+        }
+
+        .plyr--video .plyr__controls {
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.5) 50%, transparent 100%);
+        }
+
+        /* Custom quality button HD label */
+        .plyr__menu__container .plyr__control[data-plyr='quality'] {
+            position: relative;
+        }
+
+        .plyr__menu__container .plyr__control[data-plyr='quality']::before {
+            content: 'HD';
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ff0000;
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 4px;
+            border-radius: 3px;
+            z-index: 10;
+        }
+
+        /* Double-tap seek indicators */
+        .seek-indicator {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(123, 97, 255, 0.9);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 50px;
+            font-size: 24px;
+            font-weight: bold;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+            box-shadow: 0 8px 32px rgba(123, 97, 255, 0.6);
+        }
+
+        .seek-indicator.left {
+            left: 80px;
+        }
+
+        .seek-indicator.right {
+            right: 80px;
+        }
+
+        .seek-indicator.show {
+            opacity: 1;
+            animation: seekPulse 0.5s ease-out;
+        }
+
+        @keyframes seekPulse {
+            0%, 100% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-50%) scale(1.2); }
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .file-name-marquee {
+                font-size: 14px;
+            }
+
+            .plyr__control--overlaid {
+                width: 60px;
+                height: 60px;
+                padding: 15px;
+            }
+
+            .seek-indicator {
+                font-size: 18px;
+                padding: 10px 20px;
+            }
+
+            .seek-indicator.left {
+                left: 40px;
+            }
+
+            .seek-indicator.right {
+                right: 40px;
+            }
+        }
+
+        /* Loading animation */
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.3s;
+        }
+
+        .loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid rgba(123, 97, 255, 0.3);
+            border-top-color: rgba(123, 97, 255, 1);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
+    <!-- Loading indicator -->
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+    </div>
+
     <div class="container">
-        <video 
-            id="player" 
-            controls 
-            playsinline
-            crossorigin="anonymous"
-            poster="https://graph.org/file/5e6d18610741226005e6e.jpg">
-            <!-- Video source will be set by JavaScript -->
-        </video>
+        <!-- File name display with marquee -->
+        <div class="file-info">
+            <div class="file-name-marquee" id="fileName">{{ file_name }}</div>
+        </div>
+
+        <div class="player-wrapper">
+            <!-- Double-tap seek indicators -->
+            <div class="seek-indicator left" id="seekLeft">-10s</div>
+            <div class="seek-indicator right" id="seekRight">+10s</div>
+
+            <video 
+                id="player" 
+                controls 
+                playsinline
+                crossorigin="anonymous"
+                controlslist="nodownload noremoteplayback"
+                disablepictureinpicture="false"
+                preload="auto"
+                oncontextmenu="return false;"
+                poster="https://graph.org/file/5e6d18610741226005e6e.jpg">
+            </video>
+        </div>
     </div>
 
     <!-- Plyr JS -->
     <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
 
     <script>
-        // Video source - replace with your actual video URL
-        const videoSource = "{{ file_url }}";
+        // Security: Prevent right-click, long-press, and download attempts
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('selectstart', e => e.preventDefault());
         
-        // Initialize Plyr player
+        // Prevent long-press on mobile
+        let longPressTimer;
+        document.addEventListener('touchstart', e => {
+            longPressTimer = setTimeout(() => e.preventDefault(), 500);
+        });
+        document.addEventListener('touchend', () => clearTimeout(longPressTimer));
+        document.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+
+        // Video source and file info
+        const videoSource = "{{ file_url }}";
+        const fileName = "{{ file_name }}";
+        const isHLS = videoSource.includes('.m3u8');
+
+        // Initialize Plyr with enhanced configuration
         const player = new Plyr('#player', {
             controls: [
                 'play-large',
@@ -56,27 +293,275 @@
                 'mute',
                 'volume',
                 'settings',
+                'pip',
                 'fullscreen'
             ],
-            settings: ['speed'],
+            settings: ['quality', 'speed'],
             speed: {
                 selected: 1,
-                options: [0.5, 0.75, 1, 1.25, 1.5, 2]
+                options: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+            },
+            quality: {
+                default: 720,
+                options: [4320, 2880, 2160, 1440, 1080, 720, 576, 480, 360, 240]
+            },
+            ratio: '16:9',
+            fullscreen: { 
+                enabled: true, 
+                fallback: true, 
+                iosNative: true 
+            },
+            autopause: false,
+            resetOnEnd: false,
+            keyboard: { 
+                focused: true, 
+                global: true 
+            },
+            tooltips: { 
+                controls: true, 
+                seek: true 
             }
         });
-        
-        // Set video source and load
+
         const videoElement = document.getElementById('player');
-        videoElement.src = videoSource;
         
-        // When player is ready
-        player.on('ready', event => {
-            console.log('Plyr player ready');
+        // HLS streaming support with adaptive bitrate
+        if (isHLS && Hls.isSupported()) {
+            const hls = new Hls({
+                enableWorker: true,
+                lowLatencyMode: true,
+                backBufferLength: 90,
+                maxBufferLength: 30,
+                maxMaxBufferLength: 600,
+                maxBufferSize: 60 * 1000 * 1000,
+                maxBufferHole: 0.5,
+                highBufferWatchdogPeriod: 2,
+                nudgeOffset: 0.1,
+                nudgeMaxRetry: 3,
+                maxFragLookUpTolerance: 0.25,
+                liveSyncDurationCount: 3,
+                liveMaxLatencyDurationCount: Infinity,
+                liveDurationInfinity: false,
+                enableSoftwareAES: true,
+                manifestLoadingTimeOut: 10000,
+                manifestLoadingMaxRetry: 3,
+                manifestLoadingRetryDelay: 1000,
+                levelLoadingTimeOut: 10000,
+                levelLoadingMaxRetry: 4,
+                levelLoadingRetryDelay: 1000,
+                fragLoadingTimeOut: 20000,
+                fragLoadingMaxRetry: 6,
+                fragLoadingRetryDelay: 1000,
+                startFragPrefetch: true,
+                testBandwidth: true,
+                progressive: false,
+                lowLatencyMode: false
+            });
+
+            hls.loadSource(videoSource);
+            hls.attachMedia(videoElement);
+
+            // Quality levels handling
+            hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+                const availableQualities = hls.levels.map((l) => l.height);
+                player.quality = availableQualities[0];
+                
+                // Custom quality change handler
+                player.on('qualitychange', (event) => {
+                    const newQuality = event.detail.quality;
+                    console.log('Quality changed to:', newQuality);
+                    
+                    hls.levels.forEach((level, levelIndex) => {
+                        if (level.height === newQuality) {
+                            hls.currentLevel = levelIndex;
+                        }
+                    });
+                });
+
+                hideLoading();
+            });
+
+            // Error handling with retry
+            let errorRetryCount = 0;
+            hls.on(Hls.Events.ERROR, function(event, data) {
+                if (data.fatal) {
+                    switch(data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            console.error('Network error encountered, trying to recover...');
+                            if (errorRetryCount < 3) {
+                                errorRetryCount++;
+                                hls.startLoad();
+                            }
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            console.error('Media error encountered, trying to recover...');
+                            hls.recoverMediaError();
+                            break;
+                        default:
+                            console.error('Fatal error, cannot recover');
+                            hls.destroy();
+                            break;
+                    }
+                }
+            });
+
+            window.hls = hls;
+        } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+            // Native HLS support (Safari)
+            videoElement.src = videoSource;
+            videoElement.addEventListener('loadedmetadata', hideLoading);
+        } else {
+            // Regular video file
+            videoElement.src = videoSource;
+            videoElement.addEventListener('loadedmetadata', hideLoading);
+        }
+
+        // Hide loading animation
+        function hideLoading() {
+            setTimeout(() => {
+                document.getElementById('loading').classList.add('hidden');
+            }, 500);
+        }
+
+        // Double-tap seeking functionality
+        let lastTapTime = 0;
+        let lastTapX = 0;
+        const doubleTapThreshold = 300;
+
+        videoElement.addEventListener('click', function(e) {
+            const currentTime = new Date().getTime();
+            const tapInterval = currentTime - lastTapTime;
+            const tapX = e.clientX;
+
+            if (tapInterval < doubleTapThreshold && Math.abs(tapX - lastTapX) < 50) {
+                const rect = videoElement.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const width = rect.width;
+
+                if (x < width / 3) {
+                    // Double-tap on left side - seek backward 10s
+                    player.currentTime = Math.max(0, player.currentTime - 10);
+                    showSeekIndicator('left');
+                } else if (x > (width * 2 / 3)) {
+                    // Double-tap on right side - seek forward 10s
+                    player.currentTime = Math.min(player.duration, player.currentTime + 10);
+                    showSeekIndicator('right');
+                }
+                
+                lastTapTime = 0;
+            } else {
+                lastTapTime = currentTime;
+                lastTapX = tapX;
+            }
         });
-        
-        // Handle errors
-        player.on('error', event => {
+
+        // Touch events for mobile double-tap
+        let lastTouchTime = 0;
+        let lastTouchX = 0;
+
+        videoElement.addEventListener('touchend', function(e) {
+            const currentTime = new Date().getTime();
+            const tapInterval = currentTime - lastTouchTime;
+            const touch = e.changedTouches[0];
+            const touchX = touch.clientX;
+
+            if (tapInterval < doubleTapThreshold && Math.abs(touchX - lastTouchX) < 50) {
+                const rect = videoElement.getBoundingClientRect();
+                const x = touchX - rect.left;
+                const width = rect.width;
+
+                if (x < width / 3) {
+                    player.currentTime = Math.max(0, player.currentTime - 10);
+                    showSeekIndicator('left');
+                } else if (x > (width * 2 / 3)) {
+                    player.currentTime = Math.min(player.duration, player.currentTime + 10);
+                    showSeekIndicator('right');
+                }
+                
+                lastTouchTime = 0;
+            } else {
+                lastTouchTime = currentTime;
+                lastTouchX = touchX;
+            }
+        });
+
+        // Show seek indicator animation
+        function showSeekIndicator(direction) {
+            const indicator = document.getElementById(direction === 'left' ? 'seekLeft' : 'seekRight');
+            indicator.classList.add('show');
+            setTimeout(() => {
+                indicator.classList.remove('show');
+            }, 500);
+        }
+
+        // Player event listeners
+        player.on('ready', () => {
+            console.log('Plyr player ready');
+            console.log('Duration:', player.duration);
+        });
+
+        player.on('play', () => {
+            console.log('Playback started');
+        });
+
+        player.on('pause', () => {
+            console.log('Playback paused');
+        });
+
+        player.on('ended', () => {
+            console.log('Playback ended');
+        });
+
+        player.on('error', (event) => {
             console.error('Player error:', event.detail);
+            // Retry on error
+            if (errorRetryCount < 3) {
+                errorRetryCount++;
+                setTimeout(() => {
+                    videoElement.load();
+                    player.play();
+                }, 2000);
+            }
+        });
+
+        player.on('ratechange', (event) => {
+            console.log('Playback rate changed to:', player.speed);
+        });
+
+        player.on('enterpip', () => {
+            console.log('Entered Picture-in-Picture mode');
+        });
+
+        player.on('leavepip', () => {
+            console.log('Left Picture-in-Picture mode');
+        });
+
+        player.on('enterfullscreen', () => {
+            console.log('Entered fullscreen mode');
+        });
+
+        player.on('exitfullscreen', () => {
+            console.log('Exited fullscreen mode');
+        });
+
+        // Bandwidth optimization - save to localStorage
+        let bandwidthData = localStorage.getItem('playerBandwidth');
+        if (bandwidthData) {
+            console.log('Cached bandwidth data:', bandwidthData);
+        }
+
+        // Additional security: block keyboard shortcuts for download
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Prevent drag and drop
+        videoElement.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+            return false;
         });
     </script>
 </body>
