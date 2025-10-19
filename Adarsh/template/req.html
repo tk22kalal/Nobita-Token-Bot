@@ -6,12 +6,13 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="monetag" content="f3ecc71ccb639ccf66d9d0dee93d3e7a">
-    <title>{{ file_name }}</title>
+    <title>Sample Video File</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5920367457745298"
      crossorigin="anonymous"></script>
-    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+    <!-- Plyr CSS -->
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     
     <style>
         * {
@@ -43,18 +44,14 @@
             position: relative;
         }
         
-        .video-js {
+        .plyr {
             width: 100% !important;
             height: auto !important;
             aspect-ratio: 16 / 9;
         }
         
-        audio.video-js {
+        .plyr--audio {
             height: 80px !important;
-        }
-        
-        .vjs-tech {
-            object-fit: contain;
         }
         
         .tap-indicator {
@@ -92,11 +89,20 @@
             }
         }
         
-        .vjs-control-bar {
+        .plyr__controls {
             background: linear-gradient(transparent, rgba(0, 0, 0, 0.85)) !important;
         }
         
-        .vjs-big-play-button {
+        .plyr__menu {
+            background-color: rgba(0, 0, 0, 0.9) !important;
+        }
+        
+        .plyr__menu__container [role="menu"] {
+            background-color: rgba(0, 0, 0, 0.9) !important;
+            max-height: 20em !important;
+        }
+        
+        .plyr__control--overlaid {
             border-radius: 50% !important;
             width: 2em !important;
             height: 2em !important;
@@ -108,40 +114,14 @@
             transform: translate(-50%, -50%) !important;
         }
         
-        .vjs-menu-button-popup .vjs-menu {
-            left: auto !important;
-            right: 0 !important;
+        .plyr__control[data-plyr="captions"],
+        .plyr__control[data-plyr="pip"],
+        .plyr__control[data-plyr="airplay"],
+        .plyr__control[data-plyr="settings"] {
+            display: inline-block !important;
         }
         
-        .vjs-menu-button-popup .vjs-menu .vjs-menu-content {
-            background-color: rgba(0, 0, 0, 0.9) !important;
-            max-height: 20em !important;
-        }
-        
-        .vjs-menu li.vjs-selected {
-            background-color: rgba(255, 255, 255, 0.2) !important;
-        }
-        
-        .vjs-quality-button .vjs-icon-placeholder::before {
-            content: 'HD';
-            font-size: 1.5em;
-            line-height: 1.67;
-        }
-        
-        .vjs-quality-button .vjs-menu {
-            min-width: 4em;
-        }
-        
-        .vjs-playback-rate .vjs-playback-rate-value {
-            font-size: 1.5em;
-            line-height: 2;
-        }
-        
-        a[download] {
-            display: none !important;
-        }
-        
-        .vjs-control[download] {
+        .plyr__control[download] {
             display: none !important;
         }
         
@@ -170,28 +150,24 @@
 <body>
     <header>
         <marquee bgcolor="rgba(0,0,0,0.9)">
-            <div id="file-name">{{ file_name }}</div>
+            <div id="file-name">Sample Video File</div>
         </marquee>
     </header>
 
     <div class="container">
-        <{{ tag }} 
+        <video 
             id="player" 
-            class="video-js vjs-default-skin vjs-big-play-centered" 
             controls 
-            preload="auto"
             playsinline
-            webkit-playsinline
-            x-webkit-airplay="allow"
-            controlsList="nodownload"
-            oncontextmenu="return false;"
             crossorigin="anonymous">
-            <source src="{{ file_url }}" type="application/x-mpegURL">
-        </{{ tag }}>
+            <source src="https://example.com/sample.m3u8" type="application/x-mpegURL">
+        </video>
     </div>
 
-<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@videojs/http-streaming@3.12.0/dist/videojs-http-streaming.min.js"></script>
+    <!-- Plyr JS -->
+    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+    <!-- HLS.js for HLS support -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.10/dist/hls.min.js"></script>
 
 <script>
 (function() {
@@ -199,13 +175,12 @@
     
     const playerElement = document.getElementById('player');
     const container = document.querySelector('.container');
-    const source = '{{ file_url }}';
+    const source = 'https://example.com/sample.m3u8';
     const isVideo = playerElement.tagName.toLowerCase() === 'video';
     
     let player;
     let lastTapTime = 0;
     let lastTapSide = null;
-    let qualityLevels;
     
     function showTapIndicator(side, text) {
         const indicator = document.createElement('div');
@@ -230,10 +205,10 @@
                 e.stopPropagation();
                 
                 if (isLeftSide) {
-                    player.currentTime(Math.max(0, player.currentTime() - 10));
+                    player.currentTime = Math.max(0, player.currentTime - 10);
                     showTapIndicator('left', '⏪ 10s');
                 } else {
-                    player.currentTime(Math.min(player.duration(), player.currentTime() + 10));
+                    player.currentTime = Math.min(player.duration, player.currentTime + 10);
                     showTapIndicator('right', '10s ⏩');
                 }
             }
@@ -242,189 +217,147 @@
         lastTapTime = currentTime;
     }
     
-    const QualityButton = videojs.extend(videojs.getComponent('MenuButton'), {
-        constructor: function(player, options) {
-            videojs.getComponent('MenuButton').call(this, player, options);
-            this.el().setAttribute('aria-label', 'Quality');
-            this.controlText('Quality');
-            this.addClass('vjs-quality-button');
+    // Initialize Plyr player
+    const playerOptions = {
+        controls: [
+            'play-large',
+            'play',
+            'progress',
+            'current-time',
+            'mute',
+            'volume',
+            'settings',
+            'pip',
+            'airplay',
+            'fullscreen'
+        ],
+        settings: ['quality', 'speed'],
+        speed: {
+            selected: 1,
+            options: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
         },
-        
-        createEl: function() {
-            return videojs.getComponent('MenuButton').prototype.createEl.call(this, 'div', {
-                className: 'vjs-quality-button vjs-menu-button vjs-menu-button-popup vjs-control vjs-button'
-            });
-        },
-        
-        buildCSSClass: function() {
-            return 'vjs-quality-button ' + videojs.getComponent('MenuButton').prototype.buildCSSClass.call(this);
-        },
-        
-        createItems: function() {
-            const items = [];
-            const player = this.player();
-            
-            if (!qualityLevels || qualityLevels.length === 0) {
-                return items;
-            }
-            
-            const MenuItem = videojs.getComponent('MenuItem');
-            
-            items.push(new MenuItem(player, {
-                label: 'Auto',
-                selected: true,
-                selectable: true
-            }));
-            
-            const heights = [];
-            const heightMap = {};
-            
-            for (let i = 0; i < qualityLevels.length; i++) {
-                const quality = qualityLevels[i];
-                if (heights.indexOf(quality.height) === -1) {
-                    heights.push(quality.height);
-                    heightMap[quality.height] = i;
+        quality: {
+            default: 0,
+            options: [/* Will be populated by HLS qualities */],
+            forced: true,
+            onChange: (quality) => {
+                // Quality change handled by HLS.js
+                if (window.hlsPlayer) {
+                    window.hlsPlayer.currentLevel = quality;
                 }
             }
+        },
+        i18n: {
+            qualityLabel: {
+                0: 'Auto'
+            }
+        },
+        autoplay: false,
+        clickToPlay: true,
+        disableContextMenu: true,
+        hideControls: true,
+        resetOnEnd: false,
+        keyboard: {
+            focused: true,
+            global: true
+        },
+        tooltips: {
+            controls: true,
+            seek: true
+        },
+        captions: {
+            active: false,
+            language: 'auto',
+            update: false
+        },
+        fullscreen: {
+            enabled: true,
+            fallback: true,
+            iosNative: false
+        },
+        storage: {
+            enabled: true,
+            key: 'plyr'
+        },
+        volume: 1,
+        muted: false
+    };
+    
+    player = new Plyr(playerElement, playerOptions);
+    
+    // Set up HLS.js if the source is HLS
+    if (source.indexOf('.m3u8') !== -1 && Hls.isSupported()) {
+        const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 90
+        });
+        
+        hls.loadSource(source);
+        hls.attachMedia(playerElement);
+        
+        hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+            // Populate quality options
+            const qualityOptions = [{ default: true, name: 'Auto' }];
             
-            heights.sort((a, b) => b - a);
-            
-            heights.forEach(height => {
-                const item = new MenuItem(player, {
-                    label: height + 'p',
-                    selected: false,
-                    selectable: true
-                });
+            if (data.levels && data.levels.length > 0) {
+                // Get unique heights
+                const uniqueHeights = [];
+                const heightMap = {};
                 
-                item.on('click', function() {
-                    for (let i = 0; i < qualityLevels.length; i++) {
-                        qualityLevels[i].enabled = (qualityLevels[i].height === height);
+                data.levels.forEach((level, index) => {
+                    if (!heightMap[level.height]) {
+                        heightMap[level.height] = true;
+                        uniqueHeights.push({
+                            height: level.height,
+                            index: index
+                        });
                     }
                 });
                 
-                items.push(item);
-            });
+                // Sort by height (descending)
+                uniqueHeights.sort((a, b) => b.height - a.height);
+                
+                // Add to quality options
+                uniqueHeights.forEach(item => {
+                    qualityOptions.push({
+                        name: `${item.height}p`,
+                        value: item.index
+                    });
+                });
+                
+                // Update player quality options
+                player.options.quality.options = qualityOptions;
+            }
             
-            return items;
-        }
-    });
-    
-    videojs.registerComponent('QualityButton', QualityButton);
-    
-    const playerOptions = {
-        controls: true,
-        autoplay: false,
-        preload: 'auto',
-        fluid: false,
-        playsinline: true,
-        playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
-        controlBar: {
-            children: [
-                'playToggle',
-                'currentTimeDisplay',
-                'timeDivider',
-                'durationDisplay',
-                'progressControl',
-                'volumePanel',
-                'qualityButton',
-                'playbackRateMenuButton',
-                'pictureInPictureToggle',
-                'fullscreenToggle'
-            ]
-        },
-        html5: {
-            vhs: {
-                overrideNative: true,
-                enableLowInitialPlaylist: true,
-                smoothQualityChange: true,
-                useBandwidthFromLocalStorage: true,
-                bandwidth: 4194304,
-                handleManifestRedirects: true,
-                limitRenditionByPlayerDimensions: false,
-                useDevicePixelRatio: true,
-                withCredentials: false
-            },
-            nativeVideoTracks: false,
-            nativeAudioTracks: false,
-            nativeTextTracks: false
-        }
-    };
-    
-    player = videojs('player', playerOptions);
-    
-    player.ready(function() {
-        const self = this;
+            window.hlsPlayer = hls;
+        });
         
-        if (isVideo && source.indexOf('.m3u8') !== -1) {
-            qualityLevels = player.qualityLevels();
-            
-            qualityLevels.on('addqualitylevel', function(event) {
-                console.log('Quality level added:', event.qualityLevel.height + 'p');
-            });
-            
-            qualityLevels.on('change', function() {
-                const selectedLevel = qualityLevels[qualityLevels.selectedIndex];
-                if (selectedLevel) {
-                    console.log('Quality changed to:', selectedLevel.height + 'p');
+        hls.on(Hls.Events.ERROR, function(event, data) {
+            console.error('HLS error:', data);
+            if (data.fatal) {
+                switch(data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        hls.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        hls.recoverMediaError();
+                        break;
+                    default:
+                        // Cannot recover
+                        hls.destroy();
+                        break;
                 }
-            });
-        }
-        
-        playerElement.addEventListener('touchstart', handleDoubleTap, { passive: true });
-        playerElement.addEventListener('click', handleDoubleTap);
-        
-        const fullscreenBtn = self.controlBar.getChild('fullscreenToggle');
-        if (fullscreenBtn) {
-            fullscreenBtn.on('click', function() {
-                if (!self.isFullscreen()) {
-                    self.requestFullscreen();
-                } else {
-                    self.exitFullscreen();
-                }
-            });
-        }
-        
-        self.on('fullscreenchange', function() {
-            if (self.isFullscreen()) {
-                console.log('Entered fullscreen');
-            } else {
-                console.log('Exited fullscreen');
             }
         });
-    });
+    } else if (playerElement.canPlayType('application/vnd.apple.mpegurl')) {
+        // For Safari which supports HLS natively
+        playerElement.src = source;
+    }
     
-    player.on('error', function(e) {
-        const error = player.error();
-        console.error('Player error:', error);
-        
-        if (error && error.code === 4) {
-            setTimeout(function() {
-                player.src({ src: source, type: 'application/x-mpegURL' });
-                player.load();
-            }, 3000);
-        }
-    });
-    
-    player.on('loadedmetadata', function() {
-        console.log('Metadata loaded, duration:', player.duration());
-    });
-    
-    window.addEventListener('beforeunload', function() {
-        if (player) {
-            player.dispose();
-        }
-    });
-    
-    const style = document.createElement('style');
-    style.textContent = `
-        .video-js *[download] { display: none !important; }
-        .vjs-control-bar a[download] { display: none !important; }
-        video { pointer-events: auto !important; }
-        video::-webkit-media-controls-download-button { display: none !important; }
-        video::-webkit-media-controls-enclosure { overflow: hidden !important; }
-        video::-internal-media-controls-download-button { display: none !important; }
-    `;
-    document.head.appendChild(style);
+    // Add double-tap functionality
+    playerElement.addEventListener('touchstart', handleDoubleTap, { passive: true });
+    playerElement.addEventListener('click', handleDoubleTap);
     
     // Prevent context menu (right-click and long-press) on video element
     playerElement.addEventListener('contextmenu', function(e) {
@@ -450,6 +383,33 @@
     
     playerElement.addEventListener('touchmove', function() {
         clearTimeout(pressTimer);
+    });
+    
+    // Handle player events
+    player.on('ready', function() {
+        console.log('Plyr player ready');
+    });
+    
+    player.on('play', function() {
+        console.log('Playback started');
+    });
+    
+    player.on('pause', function() {
+        console.log('Playback paused');
+    });
+    
+    player.on('ended', function() {
+        console.log('Playback ended');
+    });
+    
+    player.on('error', function(event) {
+        console.error('Player error:', event.detail);
+    });
+    
+    window.addEventListener('beforeunload', function() {
+        if (player) {
+            player.destroy();
+        }
     });
     
 })();
