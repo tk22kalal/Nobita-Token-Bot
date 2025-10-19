@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sample Video File</title>
-    <!-- Plyr CSS -->
-    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <!-- Video.js CSS -->
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
     <style>
         body {
             margin: 0;
@@ -20,9 +20,10 @@
             padding: 20px;
         }
         
-        .plyr {
+        .video-js {
+            width: 100%;
+            height: auto;
             border-radius: 8px;
-            overflow: hidden;
         }
     </style>
 </head>
@@ -30,53 +31,37 @@
     <div class="container">
         <video 
             id="player" 
+            class="video-js vjs-default-skin vjs-big-play-centered"
             controls 
+            preload="auto"
             playsinline
-            crossorigin="anonymous"
+            webkit-playsinline
             poster="https://graph.org/file/5e6d18610741226005e6e.jpg">
-            <!-- Video source will be set by JavaScript -->
+            <source src="{{ file_url }}" type="application/x-mpegURL">
         </video>
     </div>
 
-    <!-- Plyr JS -->
-    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+    <!-- Video.js JS -->
+    <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
 
     <script>
-        // Video source - replace with your actual video URL
-        const videoSource = "{{ file_url }}";
-        
-        // Initialize Plyr player
-        const player = new Plyr('#player', {
-            controls: [
-                'play-large',
-                'play',
-                'progress',
-                'current-time',
-                'duration',
-                'mute',
-                'volume',
-                'settings',
-                'fullscreen'
-            ],
-            settings: ['speed'],
-            speed: {
-                selected: 1,
-                options: [0.5, 0.75, 1, 1.25, 1.5, 2]
-            }
+        // Initialize Video.js player
+        const player = videojs('player', {
+            controls: true,
+            autoplay: false,
+            preload: 'auto',
+            fluid: false,
+            playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2]
         });
         
-        // Set video source and load
-        const videoElement = document.getElementById('player');
-        videoElement.src = videoSource;
-        
         // When player is ready
-        player.on('ready', event => {
-            console.log('Plyr player ready');
+        player.ready(function() {
+            console.log('Video.js player ready');
         });
         
         // Handle errors
-        player.on('error', event => {
-            console.error('Player error:', event.detail);
+        player.on('error', function() {
+            console.error('Player error:', player.error());
         });
     </script>
 </body>
