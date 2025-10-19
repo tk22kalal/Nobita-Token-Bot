@@ -1,4 +1,4 @@
-<!--(c) NobiDeveloper - Intermediate Page - iOS Compatible-->
+<!--(c) NobiDeveloper - Intermediate Page-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,19 +6,20 @@
     <meta property="og:image" content="https://graph.org/file/5e6d18610741226005e6e.jpg" itemprop="thumbnailUrl">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{file_name}} - Generate Link</title>
+    <title>{{file_name}} - Generate Stream</title>
     <link rel="stylesheet" type='text/css' href="https://drive----google.com/uc?export=view&id=1pVLG4gZy7jdow3sO-wFS06aP_A9QX0O6">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     <!-- Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-pc6Y3X0a6Qk2t6z0m8s1GkQ3J0nq7Xz2Gq2YzKzB9lq2J3mQpK1Y3x2z1Q3Jk6b2l1F2s3a4Z5b6c7d8e9f0g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5920367457745298"
+     crossorigin="anonymous"></script>
     <style>
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            font-family: 'Raleway', Arial, sans-serif;
+            background: white;
+            font-family: Arial, sans-serif;
             margin: 0;
-            min-height: 100vh;
+            height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -26,111 +27,57 @@
 
         .container {
             text-align: center;
-            background: white;
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 500px;
-            width: 90%;
         }
 
-        .file-info {
-            margin-bottom: 30px;
-        }
-
-        .file-name {
-            font-family: 'Delius', cursive;
-            font-size: 20px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 10px;
-            word-break: break-word;
-        }
-
-        .file-size {
-            color: #666;
-            font-size: 14px;
-        }
-
-        /* Unified button styling */
-        .action-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        /* Unified button sizing and layout */
+        .generate-btn {
+            background-color: #2c5282;
             color: white;
             border: none;
+            /* fixed size to ensure both buttons are identical */
             width: 220px;
             height: 52px;
             font-size: 18px;
-            font-weight: 600;
-            border-radius: 12px;
+            border-radius: 8px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: 0.3s ease;
             margin: 10px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 12px;
-            text-decoration: none;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            gap: 10px; /* space between icon and text */
+            padding: 0 18px; /* vertical padding handled by height */
+            box-sizing: border-box;
         }
 
-        .action-btn i {
-            font-size: 20px;
+        .generate-btn i {
+            color: white; /* ensure icon color is white */
+            font-size: 18px;
+            line-height: 1;
         }
 
-        .action-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        .generate-btn:hover {
+            background-color: #24426b;
         }
 
-        .action-btn:active {
-            transform: translateY(0);
+        .generate-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
         }
 
-        .action-btn.stream-btn {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
-        }
-
-        .action-btn.stream-btn:hover {
-            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
-        }
-
-        .action-btn.download-btn {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
-        }
-
-        .action-btn.download-btn:hover {
-            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.6);
-        }
-
-        .info-text {
-            color: #666;
-            font-size: 13px;
+        .loading {
+            display: none;
             margin-top: 20px;
-            font-style: italic;
-        }
-
-        .auto-redirect {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f0f9ff;
-            border-left: 4px solid #0ea5e9;
-            border-radius: 8px;
-            color: #0c4a6e;
-            font-size: 14px;
         }
 
         .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2c5282;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
+            width: 40px;
+            height: 40px;
             animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 10px;
-            vertical-align: middle;
+            margin: 10px auto;
         }
 
         @keyframes spin {
@@ -138,19 +85,30 @@
             100% { transform: rotate(360deg); }
         }
 
-        @media (max-width: 500px) {
-            .container {
-                padding: 30px 20px;
-            }
+        .status-message {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 8px;
+            display: none;
+            font-size: 14px;
+        }
 
-            .action-btn {
-                width: 180px;
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Responsive adjustment: allow buttons to shrink on very small screens while keeping equal size */
+        @media (max-width: 260px) {
+            .generate-btn {
+                width: calc(50vw - 20px);
                 font-size: 16px;
-                height: 48px;
-            }
-
-            .file-name {
-                font-size: 18px;
+                height: 46px;
             }
         }
     </style>
@@ -158,74 +116,105 @@
 
 <body>
     <div class="container">
-        <div class="file-info">
-            <div class="file-name" id="fileName">{{file_name}}</div>
-            <div class="file-size" id="fileSize">{{file_size}}</div>
-        </div>
-
-        <!-- Direct links that open in new tab - iOS compatible -->
-        <a href="/stream/{{token}}" class="action-btn stream-btn" id="streamBtn" target="_blank" rel="noopener noreferrer">
-            <i class="fas fa-play-circle"></i>
+        <button type="button" class="generate-btn" id="streamBtn" onclick="generateStream()" aria-label="Generate stream link">
+            <i class="fas fa-play"></i>
             <span>STREAM</span>
-        </a>
-
-        <a href="/download/{{token}}" class="action-btn download-btn" id="downloadBtn" target="_blank" rel="noopener noreferrer">
+        </button>
+        <button type="button" class="generate-btn" id="downloadBtn" onclick="generateDownload()" aria-label="Generate download link">
             <i class="fas fa-download"></i>
             <span>DOWNLOAD</span>
-        </a>
+        </button>
 
-        <div class="info-text">
-            Click the button to open in a new tab
-        </div>
-
-        <div class="auto-redirect" id="autoRedirect" style="display: none;">
+        <div class="loading">
             <div class="spinner"></div>
-            <span id="redirectText">Preparing your link...</span>
+            <p>Generating link...</p>
         </div>
+
+        <div class="status-message" id="statusMessage"></div>
     </div>
 
     <script>
-        // Auto-redirect logic for direct links with ?type parameter
         const urlParams = new URLSearchParams(window.location.search);
         const linkType = urlParams.get('type');
-        const token = '{{token}}';
         
-        if (linkType === 'stream' || linkType === 'download') {
-            // Hide buttons
-            document.getElementById('streamBtn').style.display = 'none';
-            document.getElementById('downloadBtn').style.display = 'none';
-            document.querySelector('.info-text').style.display = 'none';
-            
-            // Show auto-redirect message
-            const autoRedirect = document.getElementById('autoRedirect');
-            autoRedirect.style.display = 'block';
+        window.addEventListener('DOMContentLoaded', () => {
+            const streamBtn = document.getElementById('streamBtn');
+            const downloadBtn = document.getElementById('downloadBtn');
             
             if (linkType === 'stream') {
-                document.getElementById('redirectText').textContent = 'Opening stream in new tab...';
-                // Open stream in new tab - direct redirect endpoint
-                window.open('/stream/' + token, '_blank');
-                setTimeout(() => {
-                    document.getElementById('redirectText').textContent = 'If the stream didn\'t open, click here:';
-                    autoRedirect.innerHTML = '<a href="/stream/' + token + '" target="_blank" class="action-btn stream-btn">Open Stream</a>';
-                }, 2000);
+                downloadBtn.style.display = 'none';
+                generateStream();
             } else if (linkType === 'download') {
-                document.getElementById('redirectText').textContent = 'Starting download in new tab...';
-                // Open download in new tab - direct redirect endpoint
-                window.open('/download/' + token, '_blank');
-                setTimeout(() => {
-                    document.getElementById('redirectText').textContent = 'If the download didn\'t start, click here:';
-                    autoRedirect.innerHTML = '<a href="/download/' + token + '" target="_blank" class="action-btn download-btn">Start Download</a>';
-                }, 2000);
+                streamBtn.style.display = 'none';
+                generateDownload();
+            }
+        });
+        
+        async function generateStream() {
+            const buttons = document.querySelectorAll('.generate-btn');
+            const loading = document.querySelector('.loading');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            buttons.forEach(btn => btn.disabled = true);
+            loading.style.display = 'block';
+            statusMessage.style.display = 'none';
+            loading.querySelector('p').textContent = 'Generating your stream link...';
+            
+            try {
+                const response = await fetch('/api/generate/{{token}}');
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusMessage.className = 'status-message success';
+                    statusMessage.textContent = '✅ Stream link generated successfully! Redirecting...';
+                    statusMessage.style.display = 'block';
+                    setTimeout(() => window.location.href = data.stream_url, 1500);
+                } else {
+                    throw new Error(data.error || 'Failed to generate stream link');
+                }
+            } catch (error) {
+                statusMessage.className = 'status-message error';
+                statusMessage.textContent = '❌ ' + error.message;
+                statusMessage.style.display = 'block';
+                buttons.forEach(btn => btn.disabled = false);
+                loading.style.display = 'none';
             }
         }
 
-        // Fallback: If type parameter is not provided, show both buttons
-        window.addEventListener('DOMContentLoaded', () => {
-            if (!linkType) {
-                document.getElementById('streamBtn').style.display = 'inline-flex';
-                document.getElementById('downloadBtn').style.display = 'inline-flex';
+        async function generateDownload() {
+            const buttons = document.querySelectorAll('.generate-btn');
+            const loading = document.querySelector('.loading');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            buttons.forEach(btn => btn.disabled = true);
+            loading.style.display = 'block';
+            statusMessage.style.display = 'none';
+            loading.querySelector('p').textContent = 'Generating your download link...';
+            
+            try {
+                const response = await fetch('/api/download/{{token}}');
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusMessage.className = 'status-message success';
+                    statusMessage.textContent = '✅ Download link generated! Starting download...';
+                    statusMessage.style.display = 'block';
+                    window.location.href = data.download_url;
+                    setTimeout(() => {
+                        buttons.forEach(btn => btn.disabled = false);
+                        loading.style.display = 'none';
+                    }, 2000);
+                } else {
+                    throw new Error(data.error || 'Failed to generate download link');
+                }
+            } catch (error) {
+                statusMessage.className = 'status-message error';
+                statusMessage.textContent = '❌ ' + error.message;
+                statusMessage.style.display = 'block';
+                buttons.forEach(btn => btn.disabled = false);
+                loading.style.display = 'none';
             }
-        });
+        }
     </script>
 </body>
 </html>
