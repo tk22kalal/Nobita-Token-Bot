@@ -10,7 +10,7 @@ from Adarsh.utils.human_readable import humanbytes
 from Adarsh.utils.file_properties import get_file_ids
 from Adarsh.server.exceptions import InvalidHash
 
-async def render_page(id, secure_hash, src=None):
+async def render_page(id, secure_hash, src=None, player=None):
     file_data = await get_file_ids(StreamBot, int(Var.BIN_CHANNEL), int(id))
     if file_data.unique_id[:6] != secure_hash:
         logging.debug(f"link hash: {secure_hash} - {file_data.unique_id[:6]}")
@@ -25,9 +25,12 @@ async def render_page(id, secure_hash, src=None):
     file_size = humanbytes(file_data.file_size)
 
     if tag in ["video", "audio"]:
-        # Choose video player template based on environment variable
-        # Set VIDEO_PLAYER=videojs to use Video.js, or leave default for Plyr
-        player_choice = os.environ.get('VIDEO_PLAYER', 'plyr').lower()
+        # Choose video player template based on player parameter or environment variable
+        # Priority: player parameter > VIDEO_PLAYER env var > default (plyr)
+        if player:
+            player_choice = player.lower()
+        else:
+            player_choice = os.environ.get('VIDEO_PLAYER', 'plyr').lower()
         
         if player_choice == 'videojs':
             template_file = "Adarsh/template/req_videojs.html"
