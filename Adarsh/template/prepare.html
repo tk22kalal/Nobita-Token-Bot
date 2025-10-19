@@ -283,14 +283,15 @@
             const downloadBtn = document.getElementById('downloadBtn');
             
             if (linkType === 'stream') {
+                // Hide download button for stream links, but let user choose player
                 downloadBtn.style.display = 'none';
-                // Auto-generate with specified player or default to plyr
-                const selectedPlayer = player || 'plyr';
-                generateStream(selectedPlayer);
+                // Don't auto-generate - let user choose their preferred player
             } else if (linkType === 'download') {
+                // Hide player selection for download links
                 plyrBtn.style.display = 'none';
                 videojsBtn.style.display = 'none';
                 document.querySelector('.player-section').style.display = 'none';
+                // Auto-generate download link
                 generateDownload();
             }
         });
