@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     <!-- Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-pc6Y3X0a6Qk2t6z0m8s1GkQ3J0nq7Xz2Gq2YzKzB9lq2J3mQpK1Y3x2z1Q3Jk6b2l1F2s3a4Z5b6c7d8e9f0g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-pc6Y3X0a6Qk2t6z0m8s1GkQ3J0nq7Xz2Gq2YzKzB9lq2J3mQpK1Y3x2z1Q3Jk6b2l1F2s3a4Z5[...]
     
     <style>
         body {
@@ -148,7 +148,18 @@
                 generateDownload();
             }
         });
-        
+
+        // Helper: read response safely and return either parsed JSON or text
+        async function parseResponseSafely(response) {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                return await response.json();
+            } else {
+                // fallback: return text so we can display helpful info when HTML/error pages are returned
+                return await response.text();
+            }
+        }
+
         async function generateStream() {
             const buttons = document.querySelectorAll('.generate-btn');
             const loading = document.querySelector('.loading');
@@ -161,15 +172,29 @@
             
             try {
                 const response = await fetch('/api/generate/{{token}}');
-                const data = await response.json();
                 
-                if (data.success) {
+                // If server returned non-OK (404/500/etc.), read the text and show it
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(`Server error ${response.status}: ${text ? text.slice(0, 400) : 'no response body'}`);
+                }
+
+                const parsed = await parseResponseSafely(response);
+
+                // If parsed is a string then server returned non-JSON (likely HTML)
+                if (typeof parsed === 'string') {
+                    throw new Error('Expected JSON but received non-JSON response: ' + parsed.slice(0, 400));
+                }
+
+                const data = parsed;
+
+                if (data && data.success) {
                     statusMessage.className = 'status-message success';
                     statusMessage.textContent = '✅ Stream link generated successfully! Redirecting...';
                     statusMessage.style.display = 'block';
                     setTimeout(() => window.location.href = data.stream_url, 1500);
                 } else {
-                    throw new Error(data.error || 'Failed to generate stream link');
+                    throw new Error(data && data.error ? data.error : 'Failed to generate stream link');
                 }
             } catch (error) {
                 statusMessage.className = 'status-message error';
@@ -192,9 +217,21 @@
             
             try {
                 const response = await fetch('/api/download/{{token}}');
-                const data = await response.json();
-                
-                if (data.success) {
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(`Server error ${response.status}: ${text ? text.slice(0, 400) : 'no response body'}`);
+                }
+
+                const parsed = await parseResponseSafely(response);
+
+                if (typeof parsed === 'string') {
+                    throw new Error('Expected JSON but received non-JSON response: ' + parsed.slice(0, 400));
+                }
+
+                const data = parsed;
+
+                if (data && data.success) {
                     statusMessage.className = 'status-message success';
                     statusMessage.textContent = '✅ Download link generated! Starting download...';
                     statusMessage.style.display = 'block';
@@ -204,7 +241,7 @@
                         loading.style.display = 'none';
                     }, 2000);
                 } else {
-                    throw new Error(data.error || 'Failed to generate download link');
+                    throw new Error(data && data.error ? data.error : 'Failed to generate download link');
                 }
             } catch (error) {
                 statusMessage.className = 'status-message error';
