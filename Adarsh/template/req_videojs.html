@@ -2,273 +2,454 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta property="og:image" content="https://graph.org/file/5e6d18610741226005e6e.jpg" itemprop="thumbnailUrl">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="monetag" content="f3ecc71ccb639ccf66d9d0dee93d3e7a">
     <title>{{ file_name }}</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
     
-    <!-- Video.js CSS -->
-    <link href="https://vjs.zencdn.net/8.20.1/video-js.css" rel="stylesheet" />
-    
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5920367457745298"
+     crossorigin="anonymous"></script>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
             background: #000;
-            font-family: Arial, sans-serif;
-            overflow: hidden;
+            font-family: 'Raleway', sans-serif;
+            overflow-x: hidden;
+        }
+        
+        marquee {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 10px;
+            font-family: 'Delius', serif;
+            width: 100%;
+            z-index: 999;
         }
         
         .container {
             width: 100%;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .file-info {
-            background: rgba(0, 0, 0, 0.8);
-            padding: 10px 20px;
-            width: 100%;
-            text-align: center;
-        }
-
-        .file-name {
-            color: #fff;
-            font-size: 16px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .player-wrapper {
-            width: 100%;
-            max-width: 1400px;
+            background: #000;
             position: relative;
         }
-
+        
         .video-js {
             width: 100% !important;
             height: auto !important;
+            aspect-ratio: 16 / 9;
         }
-
-        .vjs-big-play-button {
-            background: rgba(255, 0, 0, 0.8) !important;
-            border-radius: 50% !important;
-            width: 80px !important;
+        
+        audio.video-js {
             height: 80px !important;
-            line-height: 80px !important;
-            font-size: 48px !important;
+        }
+        
+        .vjs-tech {
+            object-fit: contain;
+        }
+        
+        .tap-indicator {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 60px;
+            color: rgba(255, 255, 255, 0.95);
+            pointer-events: none;
+            z-index: 10000;
+            animation: tapFade 0.5s ease-out;
+            text-shadow: 0 3px 15px rgba(0, 0, 0, 0.9);
+            font-weight: bold;
+        }
+        
+        .tap-indicator.left {
+            left: 50px;
+        }
+        
+        .tap-indicator.right {
+            right: 50px;
+        }
+        
+        @keyframes tapFade {
+            0% {
+                opacity: 1;
+                transform: translateY(-50%) scale(0.8);
+            }
+            50% {
+                transform: translateY(-50%) scale(1.2);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-50%) scale(0.8);
+            }
+        }
+        
+        .vjs-control-bar {
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.85)) !important;
+        }
+        
+        .vjs-big-play-button {
+            border-radius: 50% !important;
+            width: 2em !important;
+            height: 2em !important;
+            line-height: 2em !important;
+            border: 0.06666em solid #fff !important;
+            background-color: rgba(43, 51, 63, 0.7) !important;
             left: 50% !important;
             top: 50% !important;
-            margin-left: -40px !important;
-            margin-top: -40px !important;
-            border: none !important;
+            transform: translate(-50%, -50%) !important;
         }
-
-        .vjs-big-play-button:hover {
-            background: rgba(255, 0, 0, 1) !important;
+        
+        .vjs-menu-button-popup .vjs-menu {
+            left: auto !important;
+            right: 0 !important;
         }
-
+        
+        .vjs-menu-button-popup .vjs-menu .vjs-menu-content {
+            background-color: rgba(0, 0, 0, 0.9) !important;
+            max-height: 20em !important;
+        }
+        
+        .vjs-menu li.vjs-selected {
+            background-color: rgba(255, 255, 255, 0.2) !important;
+        }
+        
+        .vjs-quality-button .vjs-icon-placeholder::before {
+            content: 'HD';
+            font-size: 1.5em;
+            line-height: 1.67;
+        }
+        
+        .vjs-quality-button .vjs-menu {
+            min-width: 4em;
+        }
+        
+        .vjs-playback-rate .vjs-playback-rate-value {
+            font-size: 1.5em;
+            line-height: 2;
+        }
+        
+        a[download] {
+            display: none !important;
+        }
+        
+        .vjs-control[download] {
+            display: none !important;
+        }
+        
         @media (max-width: 768px) {
-            .file-name {
+            marquee {
                 font-size: 14px;
+                padding: 8px;
             }
             
-            .vjs-big-play-button {
-                width: 60px !important;
-                height: 60px !important;
-                line-height: 60px !important;
-                margin-left: -30px !important;
-                margin-top: -30px !important;
+            .tap-indicator {
+                font-size: 48px;
+            }
+            
+            .tap-indicator.left {
+                left: 30px;
+            }
+            
+            .tap-indicator.right {
+                right: 30px;
             }
         }
     </style>
+    <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGovWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
 </head>
-<body>
-    <div class="container">
-        <div class="file-info">
-            <div class="file-name">{{ file_name }}</div>
-        </div>
 
-        <div class="player-wrapper">
-            <video 
-                id="video-player" 
-                class="video-js vjs-big-play-centered"
-                controls
-                preload="auto"
-                playsinline
-                webkit-playsinline
-                crossorigin="anonymous">
-            </video>
-        </div>
+<body>
+    <header>
+        <marquee bgcolor="rgba(0,0,0,0.9)">
+            <div id="file-name">{{ file_name }}</div>
+        </marquee>
+    </header>
+
+    <div class="container">
+        <{{ tag }} 
+            id="player" 
+            class="video-js vjs-default-skin vjs-big-play-centered" 
+            controls 
+            preload="auto"
+            playsinline
+            controlsList="nodownload"
+            oncontextmenu="return false;"
+            crossorigin="anonymous">
+            <source src="{{ file_url }}" type="application/x-mpegURL">
+        </{{ tag }}>
     </div>
 
-    <!-- Video.js -->
-    <script src="https://vjs.zencdn.net/8.20.1/video.min.js"></script>
+<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@videojs/http-streaming@3.12.0/dist/videojs-http-streaming.min.js"></script>
+
+<script>
+(function() {
+    'use strict';
     
-    <!-- HLS.js for better streaming -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-
-    <script>
-        const videoSource = "{{ file_url }}";
-        const fileName = "{{ file_name }}";
-
-        // Initialize Video.js player with minimal config
-        const player = videojs('video-player', {
-            controls: true,
-            autoplay: false,
-            preload: 'auto',
-            fluid: true,
-            responsive: true,
-            playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2]
-        });
-
-        // Check if it's an HLS stream
-        const isHLS = videoSource.includes('.m3u8');
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
-        if (isHLS && !isSafari && Hls.isSupported()) {
-            // Use HLS.js for non-Safari browsers (better performance)
-            const hls = new Hls({
-                debug: false,
-                enableWorker: true,
-                lowLatencyMode: false,
-                maxBufferLength: 30,
-                maxBufferSize: 60 * 1000 * 1000,
-                maxBufferHole: 0.5
-            });
-
-            hls.loadSource(videoSource);
-            hls.attachMedia(player.tech().el());
-
-            hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                console.log('HLS manifest loaded');
-            });
-
-            hls.on(Hls.Events.ERROR, function(event, data) {
-                console.error('HLS error:', data);
-                if (data.fatal) {
-                    switch(data.type) {
-                        case Hls.ErrorTypes.NETWORK_ERROR:
-                            console.log('Network error - attempting recovery');
-                            hls.startLoad();
-                            break;
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            console.log('Media error - attempting recovery');
-                            hls.recoverMediaError();
-                            break;
-                        default:
-                            console.log('Fatal error - cannot recover');
-                            break;
-                    }
-                }
-            });
-
-            window.hls = hls;
-        } else if (isHLS) {
-            // Use native HLS for Safari/iOS (best compatibility)
-            player.src({
-                src: videoSource,
-                type: 'application/x-mpegURL'
-            });
-        } else {
-            // Regular video file
-            const mimeType = getMimeType(videoSource);
-            player.src({
-                src: videoSource,
-                type: mimeType
-            });
-        }
-
-        // Helper function to detect MIME type
-        function getMimeType(url) {
-            const ext = url.split('.').pop().split('?')[0].toLowerCase();
-            const types = {
-                'mp4': 'video/mp4',
-                'webm': 'video/webm',
-                'ogv': 'video/ogg',
-                'm3u8': 'application/x-mpegURL',
-                'mov': 'video/quicktime',
-                'avi': 'video/x-msvideo',
-                'mkv': 'video/x-matroska'
-            };
-            return types[ext] || 'video/mp4';
-        }
-
-        // Event listeners
-        player.on('loadedmetadata', function() {
-            console.log('Video metadata loaded');
-            console.log('Duration:', player.duration());
-        });
-
-        player.on('error', function() {
-            const error = player.error();
-            console.error('Player error:', error);
-            
-            // Fallback: try loading as MP4
-            if (error && error.code === 4) {
-                setTimeout(() => {
-                    player.src({
-                        src: videoSource,
-                        type: 'video/mp4'
-                    });
-                }, 1000);
-            }
-        });
-
-        // Prevent right-click
-        document.addEventListener('contextmenu', e => e.preventDefault());
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            switch(e.key) {
-                case ' ':
-                    e.preventDefault();
-                    player.paused() ? player.play() : player.pause();
-                    break;
-                case 'ArrowLeft':
-                    e.preventDefault();
+    const playerElement = document.getElementById('player');
+    const container = document.querySelector('.container');
+    const source = '{{ file_url }}';
+    const isVideo = playerElement.tagName.toLowerCase() === 'video';
+    
+    let player;
+    let lastTapTime = 0;
+    let lastTapSide = null;
+    let qualityLevels;
+    
+    function showTapIndicator(side, text) {
+        const indicator = document.createElement('div');
+        indicator.className = `tap-indicator ${side}`;
+        indicator.innerHTML = text;
+        container.appendChild(indicator);
+        setTimeout(() => indicator.remove(), 500);
+    }
+    
+    function handleDoubleTap(e) {
+        if (!isVideo) return;
+        
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTapTime;
+        const rect = playerElement.getBoundingClientRect();
+        const x = e.clientX || (e.touches && e.touches[0].clientX);
+        const isLeftSide = x < rect.left + (rect.width / 2);
+        
+        if (tapLength < 300 && tapLength > 0) {
+            if (isLeftSide === lastTapSide) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (isLeftSide) {
                     player.currentTime(Math.max(0, player.currentTime() - 10));
-                    break;
-                case 'ArrowRight':
-                    e.preventDefault();
+                    showTapIndicator('left', '⏪ 10s');
+                } else {
                     player.currentTime(Math.min(player.duration(), player.currentTime() + 10));
-                    break;
-                case 'f':
-                    e.preventDefault();
-                    player.isFullscreen() ? player.exitFullscreen() : player.requestFullscreen();
-                    break;
-                case 'm':
-                    e.preventDefault();
-                    player.muted(!player.muted());
-                    break;
+                    showTapIndicator('right', '10s ⏩');
+                }
             }
-        });
-
-        // iOS visibility fix
-        if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-            document.addEventListener('visibilitychange', function() {
-                if (!document.hidden && player && !player.paused()) {
-                    player.play().catch(e => console.log('Auto-play failed:', e));
+        }
+        lastTapSide = isLeftSide;
+        lastTapTime = currentTime;
+    }
+    
+    const QualityButton = videojs.extend(videojs.getComponent('MenuButton'), {
+        constructor: function(player, options) {
+            videojs.getComponent('MenuButton').call(this, player, options);
+            this.el().setAttribute('aria-label', 'Quality');
+            this.controlText('Quality');
+            this.addClass('vjs-quality-button');
+        },
+        
+        createEl: function() {
+            return videojs.getComponent('MenuButton').prototype.createEl.call(this, 'div', {
+                className: 'vjs-quality-button vjs-menu-button vjs-menu-button-popup vjs-control vjs-button'
+            });
+        },
+        
+        buildCSSClass: function() {
+            return 'vjs-quality-button ' + videojs.getComponent('MenuButton').prototype.buildCSSClass.call(this);
+        },
+        
+        createItems: function() {
+            const items = [];
+            const player = this.player();
+            
+            if (!qualityLevels || qualityLevels.length === 0) {
+                return items;
+            }
+            
+            const MenuItem = videojs.getComponent('MenuItem');
+            
+            items.push(new MenuItem(player, {
+                label: 'Auto',
+                selected: true,
+                selectable: true
+            }));
+            
+            const heights = [];
+            const heightMap = {};
+            
+            for (let i = 0; i < qualityLevels.length; i++) {
+                const quality = qualityLevels[i];
+                if (heights.indexOf(quality.height) === -1) {
+                    heights.push(quality.height);
+                    heightMap[quality.height] = i;
+                }
+            }
+            
+            heights.sort((a, b) => b - a);
+            
+            heights.forEach(height => {
+                const item = new MenuItem(player, {
+                    label: height + 'p',
+                    selected: false,
+                    selectable: true
+                });
+                
+                item.on('click', function() {
+                    for (let i = 0; i < qualityLevels.length; i++) {
+                        qualityLevels[i].enabled = (qualityLevels[i].height === height);
+                    }
+                });
+                
+                items.push(item);
+            });
+            
+            return items;
+        }
+    });
+    
+    videojs.registerComponent('QualityButton', QualityButton);
+    
+    const playerOptions = {
+        controls: true,
+        autoplay: false,
+        preload: 'auto',
+        fluid: false,
+        playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+        controlBar: {
+            children: [
+                'playToggle',
+                'currentTimeDisplay',
+                'timeDivider',
+                'durationDisplay',
+                'progressControl',
+                'volumePanel',
+                'qualityButton',
+                'playbackRateMenuButton',
+                'pictureInPictureToggle',
+                'fullscreenToggle'
+            ]
+        },
+        html5: {
+            vhs: {
+                overrideNative: true,
+                enableLowInitialPlaylist: true,
+                smoothQualityChange: true,
+                useBandwidthFromLocalStorage: true,
+                bandwidth: 4194304,
+                handleManifestRedirects: true,
+                limitRenditionByPlayerDimensions: false,
+                useDevicePixelRatio: true
+            },
+            nativeVideoTracks: false,
+            nativeAudioTracks: false,
+            nativeTextTracks: false
+        }
+    };
+    
+    player = videojs('player', playerOptions);
+    
+    player.ready(function() {
+        const self = this;
+        
+        if (isVideo && source.indexOf('.m3u8') !== -1) {
+            qualityLevels = player.qualityLevels();
+            
+            qualityLevels.on('addqualitylevel', function(event) {
+                console.log('Quality level added:', event.qualityLevel.height + 'p');
+            });
+            
+            qualityLevels.on('change', function() {
+                const selectedLevel = qualityLevels[qualityLevels.selectedIndex];
+                if (selectedLevel) {
+                    console.log('Quality changed to:', selectedLevel.height + 'p');
                 }
             });
         }
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', function() {
-            if (window.hls) {
-                window.hls.destroy();
-            }
-            if (player) {
-                player.dispose();
+        
+        playerElement.addEventListener('touchstart', handleDoubleTap, { passive: true });
+        playerElement.addEventListener('click', handleDoubleTap);
+        
+        const fullscreenBtn = self.controlBar.getChild('fullscreenToggle');
+        if (fullscreenBtn) {
+            fullscreenBtn.on('click', function() {
+                if (!self.isFullscreen()) {
+                    self.requestFullscreen();
+                } else {
+                    self.exitFullscreen();
+                }
+            });
+        }
+        
+        self.on('fullscreenchange', function() {
+            if (self.isFullscreen()) {
+                console.log('Entered fullscreen');
+            } else {
+                console.log('Exited fullscreen');
             }
         });
-    </script>
+    });
+    
+    player.on('error', function(e) {
+        const error = player.error();
+        console.error('Player error:', error);
+        
+        if (error && error.code === 4) {
+            setTimeout(function() {
+                player.src({ src: source, type: 'application/x-mpegURL' });
+                player.load();
+            }, 3000);
+        }
+    });
+    
+    player.on('loadedmetadata', function() {
+        console.log('Metadata loaded, duration:', player.duration());
+    });
+    
+    window.addEventListener('beforeunload', function() {
+        if (player) {
+            player.dispose();
+        }
+    });
+    
+    const style = document.createElement('style');
+    style.textContent = `
+        .video-js *[download] { display: none !important; }
+        .vjs-control-bar a[download] { display: none !important; }
+        video { pointer-events: auto !important; }
+        video::-webkit-media-controls-download-button { display: none !important; }
+        video::-webkit-media-controls-enclosure { overflow: hidden !important; }
+        video::-internal-media-controls-download-button { display: none !important; }
+    `;
+    document.head.appendChild(style);
+    
+    // Prevent context menu (right-click and long-press) on video element
+    playerElement.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    }, true);
+    
+    // Prevent long-press on mobile
+    let pressTimer;
+    playerElement.addEventListener('touchstart', function(e) {
+        if (e.target.tagName.toLowerCase() === 'video') {
+            pressTimer = setTimeout(function() {
+                e.preventDefault();
+                e.stopPropagation();
+            }, 500);
+        }
+    });
+    
+    playerElement.addEventListener('touchend', function() {
+        clearTimeout(pressTimer);
+    });
+    
+    playerElement.addEventListener('touchmove', function() {
+        clearTimeout(pressTimer);
+    });
+    
+})();
+</script>
+    
 </body>
 </html>
