@@ -2,6 +2,7 @@ import jinja2
 import urllib.parse
 import logging
 import aiohttp
+import os
 
 from Adarsh.vars import Var
 from Adarsh.bot import StreamBot
@@ -24,7 +25,14 @@ async def render_page(id, secure_hash, src=None):
     file_size = humanbytes(file_data.file_size)
 
     if tag in ["video", "audio"]:
-        template_file = "Adarsh/template/req.html"
+        # Choose video player template based on environment variable
+        # Set VIDEO_PLAYER=videojs to use Video.js, or leave default for Plyr
+        player_choice = os.environ.get('VIDEO_PLAYER', 'plyr').lower()
+        
+        if player_choice == 'videojs':
+            template_file = "Adarsh/template/req_videojs.html"
+        else:
+            template_file = "Adarsh/template/req.html"
     else:
         template_file = "Adarsh/template/dl.html"
         async with aiohttp.ClientSession() as s:
