@@ -2,418 +2,82 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta property="og:image" content="https://graph.org/file/5e6d18610741226005e6e.jpg" itemprop="thumbnailUrl">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="monetag" content="f3ecc71ccb639ccf66d9d0dee93d3e7a">
     <title>Sample Video File</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5920367457745298"
-     crossorigin="anonymous"></script>
     <!-- Plyr CSS -->
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
-    
     <style>
-        * {
+        body {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
             background: #000;
-            font-family: 'Raleway', sans-serif;
-            overflow-x: hidden;
-        }
-        
-        marquee {
-            font-size: 18px;
-            font-weight: 600;
-            color: #fff;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 10px;
-            font-family: 'Delius', serif;
-            width: 100%;
-            z-index: 999;
+            font-family: Arial, sans-serif;
         }
         
         .container {
-            width: 100%;
-            background: #000;
-            position: relative;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
         }
         
         .plyr {
-            width: 100% !important;
-            height: auto !important;
-            aspect-ratio: 16 / 9;
-        }
-        
-        .plyr--audio {
-            height: 80px !important;
-        }
-        
-        .tap-indicator {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 60px;
-            color: rgba(255, 255, 255, 0.95);
-            pointer-events: none;
-            z-index: 10000;
-            animation: tapFade 0.5s ease-out;
-            text-shadow: 0 3px 15px rgba(0, 0, 0, 0.9);
-            font-weight: bold;
-        }
-        
-        .tap-indicator.left {
-            left: 50px;
-        }
-        
-        .tap-indicator.right {
-            right: 50px;
-        }
-        
-        @keyframes tapFade {
-            0% {
-                opacity: 1;
-                transform: translateY(-50%) scale(0.8);
-            }
-            50% {
-                transform: translateY(-50%) scale(1.2);
-            }
-            100% {
-                opacity: 0;
-                transform: translateY(-50%) scale(0.8);
-            }
-        }
-        
-        .plyr__controls {
-            background: linear-gradient(transparent, rgba(0, 0, 0, 0.85)) !important;
-        }
-        
-        .plyr__menu {
-            background-color: rgba(0, 0, 0, 0.9) !important;
-        }
-        
-        .plyr__menu__container [role="menu"] {
-            background-color: rgba(0, 0, 0, 0.9) !important;
-            max-height: 20em !important;
-        }
-        
-        .plyr__control--overlaid {
-            border-radius: 50% !important;
-            width: 2em !important;
-            height: 2em !important;
-            line-height: 2em !important;
-            border: 0.06666em solid #fff !important;
-            background-color: rgba(43, 51, 63, 0.7) !important;
-            left: 50% !important;
-            top: 50% !important;
-            transform: translate(-50%, -50%) !important;
-        }
-        
-        .plyr__control[data-plyr="captions"],
-        .plyr__control[data-plyr="pip"],
-        .plyr__control[data-plyr="airplay"],
-        .plyr__control[data-plyr="settings"] {
-            display: inline-block !important;
-        }
-        
-        .plyr__control[download] {
-            display: none !important;
-        }
-        
-        @media (max-width: 768px) {
-            marquee {
-                font-size: 14px;
-                padding: 8px;
-            }
-            
-            .tap-indicator {
-                font-size: 48px;
-            }
-            
-            .tap-indicator.left {
-                left: 30px;
-            }
-            
-            .tap-indicator.right {
-                right: 30px;
-            }
+            border-radius: 8px;
+            overflow: hidden;
         }
     </style>
-    <meta name='dmca-site-verification' content='THBkdGsyeW85ZTBMT3VZNHpteGovWEtoV3h5NENqcDdPa2hsUzZiU0ZZST01' />
 </head>
-
 <body>
-    <header>
-        <marquee bgcolor="rgba(0,0,0,0.9)">
-            <div id="file-name">Sample Video File</div>
-        </marquee>
-    </header>
-
     <div class="container">
         <video 
             id="player" 
             controls 
             playsinline
-            crossorigin="anonymous">
-            <source src="https://example.com/sample.m3u8" type="application/x-mpegURL">
+            crossorigin="anonymous"
+            poster="https://graph.org/file/5e6d18610741226005e6e.jpg">
+            <!-- Video source will be set by JavaScript -->
         </video>
     </div>
 
     <!-- Plyr JS -->
     <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-    <!-- HLS.js for HLS support -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.10/dist/hls.min.js"></script>
 
-<script>
-(function() {
-    'use strict';
-    
-    const playerElement = document.getElementById('player');
-    const container = document.querySelector('.container');
-    const source = 'https://example.com/sample.m3u8';
-    const isVideo = playerElement.tagName.toLowerCase() === 'video';
-    
-    let player;
-    let lastTapTime = 0;
-    let lastTapSide = null;
-    
-    function showTapIndicator(side, text) {
-        const indicator = document.createElement('div');
-        indicator.className = `tap-indicator ${side}`;
-        indicator.innerHTML = text;
-        container.appendChild(indicator);
-        setTimeout(() => indicator.remove(), 500);
-    }
-    
-    function handleDoubleTap(e) {
-        if (!isVideo) return;
+    <script>
+        // Video source - replace with your actual video URL
+        const videoSource = "{{ file_url }}";
         
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTapTime;
-        const rect = playerElement.getBoundingClientRect();
-        const x = e.clientX || (e.touches && e.touches[0].clientX);
-        const isLeftSide = x < rect.left + (rect.width / 2);
-        
-        if (tapLength < 300 && tapLength > 0) {
-            if (isLeftSide === lastTapSide) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                if (isLeftSide) {
-                    player.currentTime = Math.max(0, player.currentTime - 10);
-                    showTapIndicator('left', '⏪ 10s');
-                } else {
-                    player.currentTime = Math.min(player.duration, player.currentTime + 10);
-                    showTapIndicator('right', '10s ⏩');
-                }
-            }
-        }
-        lastTapSide = isLeftSide;
-        lastTapTime = currentTime;
-    }
-    
-    // Initialize Plyr player
-    const playerOptions = {
-        controls: [
-            'play-large',
-            'play',
-            'progress',
-            'current-time',
-            'mute',
-            'volume',
-            'settings',
-            'pip',
-            'airplay',
-            'fullscreen'
-        ],
-        settings: ['quality', 'speed'],
-        speed: {
-            selected: 1,
-            options: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
-        },
-        quality: {
-            default: 0,
-            options: [/* Will be populated by HLS qualities */],
-            forced: true,
-            onChange: (quality) => {
-                // Quality change handled by HLS.js
-                if (window.hlsPlayer) {
-                    window.hlsPlayer.currentLevel = quality;
-                }
-            }
-        },
-        i18n: {
-            qualityLabel: {
-                0: 'Auto'
-            }
-        },
-        autoplay: false,
-        clickToPlay: true,
-        disableContextMenu: true,
-        hideControls: true,
-        resetOnEnd: false,
-        keyboard: {
-            focused: true,
-            global: true
-        },
-        tooltips: {
-            controls: true,
-            seek: true
-        },
-        captions: {
-            active: false,
-            language: 'auto',
-            update: false
-        },
-        fullscreen: {
-            enabled: true,
-            fallback: true,
-            iosNative: false
-        },
-        storage: {
-            enabled: true,
-            key: 'plyr'
-        },
-        volume: 1,
-        muted: false
-    };
-    
-    player = new Plyr(playerElement, playerOptions);
-    
-    // Set up HLS.js if the source is HLS
-    if (source.indexOf('.m3u8') !== -1 && Hls.isSupported()) {
-        const hls = new Hls({
-            enableWorker: true,
-            lowLatencyMode: true,
-            backBufferLength: 90
-        });
-        
-        hls.loadSource(source);
-        hls.attachMedia(playerElement);
-        
-        hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
-            // Populate quality options
-            const qualityOptions = [{ default: true, name: 'Auto' }];
-            
-            if (data.levels && data.levels.length > 0) {
-                // Get unique heights
-                const uniqueHeights = [];
-                const heightMap = {};
-                
-                data.levels.forEach((level, index) => {
-                    if (!heightMap[level.height]) {
-                        heightMap[level.height] = true;
-                        uniqueHeights.push({
-                            height: level.height,
-                            index: index
-                        });
-                    }
-                });
-                
-                // Sort by height (descending)
-                uniqueHeights.sort((a, b) => b.height - a.height);
-                
-                // Add to quality options
-                uniqueHeights.forEach(item => {
-                    qualityOptions.push({
-                        name: `${item.height}p`,
-                        value: item.index
-                    });
-                });
-                
-                // Update player quality options
-                player.options.quality.options = qualityOptions;
-            }
-            
-            window.hlsPlayer = hls;
-        });
-        
-        hls.on(Hls.Events.ERROR, function(event, data) {
-            console.error('HLS error:', data);
-            if (data.fatal) {
-                switch(data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                        hls.startLoad();
-                        break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                        hls.recoverMediaError();
-                        break;
-                    default:
-                        // Cannot recover
-                        hls.destroy();
-                        break;
-                }
+        // Initialize Plyr player
+        const player = new Plyr('#player', {
+            controls: [
+                'play-large',
+                'play',
+                'progress',
+                'current-time',
+                'duration',
+                'mute',
+                'volume',
+                'settings',
+                'fullscreen'
+            ],
+            settings: ['speed'],
+            speed: {
+                selected: 1,
+                options: [0.5, 0.75, 1, 1.25, 1.5, 2]
             }
         });
-    } else if (playerElement.canPlayType('application/vnd.apple.mpegurl')) {
-        // For Safari which supports HLS natively
-        playerElement.src = source;
-    }
-    
-    // Add double-tap functionality
-    playerElement.addEventListener('touchstart', handleDoubleTap, { passive: true });
-    playerElement.addEventListener('click', handleDoubleTap);
-    
-    // Prevent context menu (right-click and long-press) on video element
-    playerElement.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-    }, true);
-    
-    // Prevent long-press on mobile
-    let pressTimer;
-    playerElement.addEventListener('touchstart', function(e) {
-        if (e.target.tagName.toLowerCase() === 'video') {
-            pressTimer = setTimeout(function() {
-                e.preventDefault();
-                e.stopPropagation();
-            }, 500);
-        }
-    });
-    
-    playerElement.addEventListener('touchend', function() {
-        clearTimeout(pressTimer);
-    });
-    
-    playerElement.addEventListener('touchmove', function() {
-        clearTimeout(pressTimer);
-    });
-    
-    // Handle player events
-    player.on('ready', function() {
-        console.log('Plyr player ready');
-    });
-    
-    player.on('play', function() {
-        console.log('Playback started');
-    });
-    
-    player.on('pause', function() {
-        console.log('Playback paused');
-    });
-    
-    player.on('ended', function() {
-        console.log('Playback ended');
-    });
-    
-    player.on('error', function(event) {
-        console.error('Player error:', event.detail);
-    });
-    
-    window.addEventListener('beforeunload', function() {
-        if (player) {
-            player.destroy();
-        }
-    });
-    
-})();
-</script>
-    
+        
+        // Set video source and load
+        const videoElement = document.getElementById('player');
+        videoElement.src = videoSource;
+        
+        // When player is ready
+        player.on('ready', event => {
+            console.log('Plyr player ready');
+        });
+        
+        // Handle errors
+        player.on('error', event => {
+            console.error('Player error:', event.detail);
+        });
+    </script>
 </body>
 </html>
