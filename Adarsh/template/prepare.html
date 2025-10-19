@@ -1,3 +1,4 @@
+```html
 <!--(c) NobiDeveloper - Intermediate Page-->
 <!DOCTYPE html>
 <html lang="en">
@@ -7,17 +8,10 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{file_name}} - Generate Stream</title>
-    <link rel="stylesheet" type='text/css' href="https://drive----google.com/uc?export=view&id=1pVLG4gZy7jdow3sO-wFS06aP_A9QX0O6">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Delius">
-    <!-- Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-pc6Y3X0a6Qk2t6z0m8s1GkQ3J0nq7Xz2Gq2YzKzB9lq2J3mQpK1Y3x2z1Q3Jk6b2l1F2s3a4Z5b6c7d8e9f0g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5920367457745298"
-     crossorigin="anonymous"></script>
     <style>
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            font-family: 'Raleway', Arial, sans-serif;
+            background: white;
+            font-family: Arial, sans-serif;
             margin: 0;
             min-height: 100vh;
             display: flex;
@@ -28,142 +22,37 @@
 
         .container {
             text-align: center;
-            background: white;
-            padding: 40px 30px;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             max-width: 500px;
             width: 100%;
         }
 
-        h2 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 24px;
-            font-weight: 600;
-        }
-
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-
-        /* Player selection section */
-        .player-section {
-            margin-bottom: 30px;
-        }
-
-        .player-section h3 {
-            color: #444;
-            font-size: 16px;
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-
         .player-buttons {
             display: flex;
-            gap: 15px;
+            gap: 20px;
             justify-content: center;
             flex-wrap: wrap;
         }
 
-        /* Player button styling */
         .player-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #2c5282;
             color: white;
             border: none;
             width: 180px;
             height: 60px;
             font-size: 16px;
             font-weight: 600;
-            border-radius: 12px;
+            border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s ease;
-            display: inline-flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .player-btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            transition: left 0.5s;
-        }
-
-        .player-btn:hover::before {
-            left: 100%;
         }
 
         .player-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+            background: #1a365d;
         }
 
         .player-btn:disabled {
-            background: linear-gradient(135deg, #ccc 0%, #999 100%);
+            background: #ccc;
             cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        .player-btn i {
-            font-size: 20px;
-        }
-
-        .player-btn .player-name {
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        /* Download button */
-        .download-section {
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }
-
-        .download-btn {
-            background: linear-gradient(135deg, #2c5282 0%, #1a365d 100%);
-            color: white;
-            border: none;
-            width: 200px;
-            height: 50px;
-            font-size: 16px;
-            font-weight: 600;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            box-shadow: 0 4px 15px rgba(44, 82, 130, 0.4);
-        }
-
-        .download-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(44, 82, 130, 0.6);
-        }
-
-        .download-btn:disabled {
-            background: linear-gradient(135deg, #ccc 0%, #999 100%);
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .download-btn i {
-            font-size: 18px;
         }
 
         .loading {
@@ -173,7 +62,7 @@
 
         .spinner {
             border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
+            border-top: 4px solid #2c5282;
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -187,7 +76,7 @@
         }
 
         .loading-text {
-            color: #667eea;
+            color: #2c5282;
             font-weight: 600;
             margin-top: 10px;
         }
@@ -213,24 +102,11 @@
             border: 1px solid #f5c6cb;
         }
 
-        /* Responsive */
         @media (max-width: 480px) {
-            .container {
-                padding: 30px 20px;
-            }
-
             .player-btn {
                 width: 140px;
                 height: 55px;
                 font-size: 14px;
-            }
-
-            .player-btn i {
-                font-size: 18px;
-            }
-
-            h2 {
-                font-size: 20px;
             }
         }
     </style>
@@ -238,29 +114,12 @@
 
 <body>
     <div class="container">
-        <h2>Choose Your Player</h2>
-        <p class="subtitle">Select a video player to stream your content</p>
-
-        <!-- Player Selection Section -->
-        <div class="player-section">
-            <h3>🎬 Select Player</h3>
-            <div class="player-buttons">
-                <button type="button" class="player-btn" id="plyrBtn" onclick="generateStream('plyr')" aria-label="Stream with Plyr">
-                    <i class="fas fa-play-circle"></i>
-                    <span class="player-name">Plyr</span>
-                </button>
-                <button type="button" class="player-btn" id="videojsBtn" onclick="generateStream('videojs')" aria-label="Stream with Video.js">
-                    <i class="fas fa-video"></i>
-                    <span class="player-name">Video.js</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- Download Section -->
-        <div class="download-section">
-            <button type="button" class="download-btn" id="downloadBtn" onclick="generateDownload()" aria-label="Generate download link">
-                <i class="fas fa-download"></i>
-                <span>DOWNLOAD</span>
+        <div class="player-buttons">
+            <button type="button" class="player-btn" id="plyrBtn" onclick="generateStream('plyr')" aria-label="Stream with IOS/PC">
+                IOS/PC
+            </button>
+            <button type="button" class="player-btn" id="videojsBtn" onclick="generateStream('videojs')" aria-label="Stream with ANDROID">
+                ANDROID
             </button>
         </div>
 
@@ -280,24 +139,20 @@
         window.addEventListener('DOMContentLoaded', () => {
             const plyrBtn = document.getElementById('plyrBtn');
             const videojsBtn = document.getElementById('videojsBtn');
-            const downloadBtn = document.getElementById('downloadBtn');
             
             if (linkType === 'stream') {
-                // Hide download button for stream links, but let user choose player
-                downloadBtn.style.display = 'none';
                 // Don't auto-generate - let user choose their preferred player
             } else if (linkType === 'download') {
                 // Hide player selection for download links
                 plyrBtn.style.display = 'none';
                 videojsBtn.style.display = 'none';
-                document.querySelector('.player-section').style.display = 'none';
                 // Auto-generate download link
                 generateDownload();
             }
         });
         
         async function generateStream(playerType) {
-            const buttons = document.querySelectorAll('.player-btn, .download-btn');
+            const buttons = document.querySelectorAll('.player-btn');
             const loading = document.querySelector('.loading');
             const statusMessage = document.getElementById('statusMessage');
             const loadingText = document.getElementById('loadingText');
@@ -306,7 +161,7 @@
             loading.style.display = 'block';
             statusMessage.style.display = 'none';
             
-            const playerName = playerType === 'plyr' ? 'Plyr' : 'Video.js';
+            const playerName = playerType === 'plyr' ? 'IOS/PC' : 'ANDROID';
             loadingText.textContent = `Generating ${playerName} stream link...`;
             
             try {
@@ -331,7 +186,7 @@
         }
 
         async function generateDownload() {
-            const buttons = document.querySelectorAll('.player-btn, .download-btn');
+            const buttons = document.querySelectorAll('.player-btn');
             const loading = document.querySelector('.loading');
             const statusMessage = document.getElementById('statusMessage');
             const loadingText = document.getElementById('loadingText');
@@ -368,3 +223,4 @@
     </script>
 </body>
 </html>
+```
