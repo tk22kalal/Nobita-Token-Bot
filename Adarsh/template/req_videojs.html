@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <title>{{ file_name }}</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;600;700&family=Delius&display=swap" rel="stylesheet">
+    
+    <!-- Video.js CSS -->
+    <link href="https://vjs.zencdn.net/8.20.1/video-js.css" rel="stylesheet" />
+    
+    <!-- Video.js Contrib Quality Levels -->
+    <link rel="stylesheet" href="https://unpkg.com/@videojs/themes@1/dist/city/index.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            font-family: 'Raleway', sans-serif;
+            overflow-x: hidden;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .file-info {
+            background: linear-gradient(90deg, rgba(26, 26, 46, 0.9), rgba(46, 46, 86, 0.9));
+            padding: 15px;
+            border-radius: 12px 12px 0 0;
+            margin-bottom: -8px;
+            overflow: hidden;
+        }
+
+        .file-name-marquee {
+            font-family: 'Delius', cursive;
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            animation: marquee 15s linear infinite;
+            display: inline-block;
+            padding-left: 100%;
+        }
+
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-100%); }
+        }
+
+        .file-info:hover .file-name-marquee {
+            animation-play-state: paused;
+        }
+        
+        .player-wrapper {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Video.js custom styling */
+        .video-js {
+            width: 100%;
+            height: auto;
+            border-radius: 0 0 12px 12px;
+            font-family: 'Raleway', sans-serif;
+        }
+
+        /* Custom big play button */
+        .vjs-big-play-button {
+            background: rgba(123, 97, 255, 0.9) !important;
+            border: 4px solid rgba(255, 255, 255, 0.3) !important;
+            border-radius: 50% !important;
+            width: 80px !important;
+            height: 80px !important;
+            line-height: 72px !important;
+            font-size: 48px !important;
+            left: 50% !important;
+            top: 50% !important;
+            margin-left: -40px !important;
+            margin-top: -40px !important;
+            box-shadow: 0 8px 32px rgba(123, 97, 255, 0.6) !important;
+        }
+
+        .vjs-big-play-button:hover {
+            background: rgba(123, 97, 255, 1) !important;
+            transform: scale(1.1);
+        }
+
+        /* Control bar styling */
+        .video-js .vjs-control-bar {
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.5) 50%, transparent 100%) !important;
+            height: 4em;
+        }
+
+        /* Progress bar */
+        .video-js .vjs-play-progress {
+            background-color: rgba(123, 97, 255, 1) !important;
+        }
+
+        .video-js .vjs-slider {
+            background-color: rgba(255, 255, 255, 0.3) !important;
+        }
+
+        /* Double-tap seek indicators */
+        .seek-indicator {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(123, 97, 255, 0.9);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 50px;
+            font-size: 24px;
+            font-weight: bold;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+            box-shadow: 0 8px 32px rgba(123, 97, 255, 0.6);
+        }
+
+        .seek-indicator.left {
+            left: 80px;
+        }
+
+        .seek-indicator.right {
+            right: 80px;
+        }
+
+        .seek-indicator.show {
+            opacity: 1;
+            animation: seekPulse 0.5s ease-out;
+        }
+
+        @keyframes seekPulse {
+            0%, 100% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-50%) scale(1.2); }
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .file-name-marquee {
+                font-size: 14px;
+            }
+
+            .vjs-big-play-button {
+                width: 60px !important;
+                height: 60px !important;
+                line-height: 52px !important;
+                margin-left: -30px !important;
+                margin-top: -30px !important;
+            }
+
+            .seek-indicator {
+                font-size: 18px;
+                padding: 10px 20px;
+            }
+
+            .seek-indicator.left {
+                left: 40px;
+            }
+
+            .seek-indicator.right {
+                right: 40px;
+            }
+        }
+
+        /* Loading animation */
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.3s;
+        }
+
+        .loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid rgba(123, 97, 255, 0.3);
+            border-top-color: rgba(123, 97, 255, 1);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* iOS specific fixes */
+        .video-js.vjs-playing .vjs-tech {
+            pointer-events: auto;
+        }
+
+        /* Fullscreen button enhancement */
+        .vjs-fullscreen-control {
+            order: 10;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading indicator -->
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <div class="container">
+        <!-- File name display -->
+        <div class="file-info">
+            <div class="file-name-marquee">{{ file_name }}</div>
+        </div>
+
+        <div class="player-wrapper">
+            <!-- Double-tap seek indicators -->
+            <div class="seek-indicator left" id="seekLeft">-10s</div>
+            <div class="seek-indicator right" id="seekRight">+10s</div>
+
+            <!-- Video.js player -->
+            <video 
+                id="video-player" 
+                class="video-js vjs-big-play-centered vjs-theme-city"
+                controls
+                preload="auto"
+                playsinline
+                webkit-playsinline
+                x-webkit-airplay="allow"
+                crossorigin="anonymous"
+                data-setup='{}'>
+            </video>
+        </div>
+    </div>
+
+    <!-- Video.js core -->
+    <script src="https://vjs.zencdn.net/8.20.1/video.min.js"></script>
+    
+    <!-- Video.js plugins for iOS/HLS support -->
+    <script src="https://cdn.jsdelivr.net/npm/@videojs/http-streaming@3.14.2/dist/videojs-http-streaming.min.js"></script>
+
+    <script>
+        // Security: Prevent right-click and selection
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('selectstart', e => e.preventDefault());
+        
+        // Prevent long-press on mobile
+        let longPressTimer;
+        document.addEventListener('touchstart', e => {
+            if (e.target.tagName !== 'VIDEO') return;
+            longPressTimer = setTimeout(() => e.preventDefault(), 500);
+        });
+        document.addEventListener('touchend', () => clearTimeout(longPressTimer));
+        document.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+
+        // Video source
+        const videoSource = "{{ file_url }}";
+        const fileName = "{{ file_name }}";
+
+        // Initialize Video.js with iOS-compatible settings
+        const player = videojs('video-player', {
+            controls: true,
+            autoplay: false,
+            preload: 'auto',
+            fluid: true,
+            responsive: true,
+            aspectRatio: '16:9',
+            playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+            controlBar: {
+                children: [
+                    'playToggle',
+                    'volumePanel',
+                    'currentTimeDisplay',
+                    'timeDivider',
+                    'durationDisplay',
+                    'progressControl',
+                    'playbackRateMenuButton',
+                    'pictureInPictureToggle',
+                    'fullscreenToggle'
+                ]
+            },
+            html5: {
+                vhs: {
+                    overrideNative: !videojs.browser.IS_SAFARI,
+                    enableLowInitialPlaylist: true,
+                    smoothQualityChange: true,
+                    fastQualityChange: true,
+                    handlePartialData: true,
+                    limitRenditionByPlayerDimensions: true,
+                    useNetworkInformationApi: true,
+                    useBandwidthFromLocalStorage: true
+                },
+                nativeVideoTracks: false,
+                nativeAudioTracks: false,
+                nativeTextTracks: false
+            },
+            // iOS-specific settings
+            techOrder: ['html5'],
+            inactivityTimeout: 3000,
+            liveui: false,
+            nativeControlsForTouch: false
+        });
+
+        // Set video source with proper MIME type detection
+        function getMimeType(url) {
+            const ext = url.split('.').pop().split('?')[0].toLowerCase();
+            const mimeTypes = {
+                'mp4': 'video/mp4',
+                'm4v': 'video/mp4',
+                'webm': 'video/webm',
+                'ogv': 'video/ogg',
+                'm3u8': 'application/x-mpegURL',
+                'mpd': 'application/dash+xml',
+                'mov': 'video/quicktime',
+                'avi': 'video/x-msvideo',
+                'mkv': 'video/x-matroska'
+            };
+            return mimeTypes[ext] || 'video/mp4';
+        }
+
+        const mimeType = getMimeType(videoSource);
+        
+        player.ready(function() {
+            this.src({
+                src: videoSource,
+                type: mimeType
+            });
+
+            // Hide loading when metadata is loaded
+            this.on('loadedmetadata', function() {
+                hideLoading();
+                console.log('Video metadata loaded');
+                console.log('Duration:', this.duration());
+                console.log('Dimensions:', this.videoWidth(), 'x', this.videoHeight());
+            });
+
+            // Additional event handlers
+            this.on('loadeddata', function() {
+                console.log('Video data loaded');
+            });
+
+            this.on('canplay', function() {
+                console.log('Video can play');
+            });
+
+            this.on('play', function() {
+                console.log('Playback started');
+            });
+
+            this.on('pause', function() {
+                console.log('Playback paused');
+            });
+
+            this.on('ended', function() {
+                console.log('Playback ended');
+            });
+
+            this.on('error', function(e) {
+                console.error('Video error:', this.error());
+                // Retry logic for iOS
+                if (this.error() && this.error().code === 4) {
+                    console.log('MEDIA_ERR_SRC_NOT_SUPPORTED - Retrying with alternative method...');
+                    setTimeout(() => {
+                        this.src({
+                            src: videoSource,
+                            type: 'video/mp4'
+                        });
+                        this.load();
+                    }, 1000);
+                }
+            });
+
+            // Rate change handler
+            this.on('ratechange', function() {
+                console.log('Playback rate:', this.playbackRate());
+            });
+        });
+
+        // Hide loading animation
+        function hideLoading() {
+            setTimeout(() => {
+                document.getElementById('loading').classList.add('hidden');
+            }, 500);
+        }
+
+        // YouTube-like double-tap seek functionality
+        let lastTapTime = 0;
+        let lastTapX = 0;
+        const doubleTapThreshold = 300;
+        const videoElement = document.getElementById('video-player');
+
+        // Click-based double-tap (for desktop)
+        videoElement.addEventListener('click', function(e) {
+            // Don't interfere with control bar clicks
+            if (e.target.closest('.vjs-control-bar')) return;
+            
+            const currentTime = new Date().getTime();
+            const tapInterval = currentTime - lastTapTime;
+            const tapX = e.clientX;
+
+            if (tapInterval < doubleTapThreshold && Math.abs(tapX - lastTapX) < 50) {
+                const rect = videoElement.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const width = rect.width;
+
+                if (x < width / 3) {
+                    // Left side - seek backward
+                    const newTime = Math.max(0, player.currentTime() - 10);
+                    player.currentTime(newTime);
+                    showSeekIndicator('left');
+                } else if (x > (width * 2 / 3)) {
+                    // Right side - seek forward
+                    const newTime = Math.min(player.duration(), player.currentTime() + 10);
+                    player.currentTime(newTime);
+                    showSeekIndicator('right');
+                }
+                
+                lastTapTime = 0;
+                e.preventDefault();
+                e.stopPropagation();
+            } else {
+                lastTapTime = currentTime;
+                lastTapX = tapX;
+            }
+        });
+
+        // Touch-based double-tap (for mobile/tablet)
+        let lastTouchTime = 0;
+        let lastTouchX = 0;
+
+        videoElement.addEventListener('touchend', function(e) {
+            // Don't interfere with control bar touches
+            if (e.target.closest('.vjs-control-bar')) return;
+            
+            const currentTime = new Date().getTime();
+            const tapInterval = currentTime - lastTouchTime;
+            const touch = e.changedTouches[0];
+            const touchX = touch.clientX;
+
+            if (tapInterval < doubleTapThreshold && Math.abs(touchX - lastTouchX) < 50) {
+                const rect = videoElement.getBoundingClientRect();
+                const x = touchX - rect.left;
+                const width = rect.width;
+
+                if (x < width / 3) {
+                    const newTime = Math.max(0, player.currentTime() - 10);
+                    player.currentTime(newTime);
+                    showSeekIndicator('left');
+                } else if (x > (width * 2 / 3)) {
+                    const newTime = Math.min(player.duration(), player.currentTime() + 10);
+                    player.currentTime(newTime);
+                    showSeekIndicator('right');
+                }
+                
+                lastTouchTime = 0;
+                e.preventDefault();
+                e.stopPropagation();
+            } else {
+                lastTouchTime = currentTime;
+                lastTouchX = touchX;
+            }
+        });
+
+        // Show seek indicator animation
+        function showSeekIndicator(direction) {
+            const indicator = document.getElementById(direction === 'left' ? 'seekLeft' : 'seekRight');
+            indicator.classList.add('show');
+            setTimeout(() => {
+                indicator.classList.remove('show');
+            }, 500);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Prevent Ctrl+S / Cmd+S
+            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                return false;
+            }
+
+            // Custom keyboard controls
+            if (!e.target.matches('input, textarea')) {
+                switch(e.key) {
+                    case 'ArrowLeft':
+                        player.currentTime(Math.max(0, player.currentTime() - 10));
+                        showSeekIndicator('left');
+                        e.preventDefault();
+                        break;
+                    case 'ArrowRight':
+                        player.currentTime(Math.min(player.duration(), player.currentTime() + 10));
+                        showSeekIndicator('right');
+                        e.preventDefault();
+                        break;
+                    case ' ':
+                    case 'k':
+                        if (player.paused()) {
+                            player.play();
+                        } else {
+                            player.pause();
+                        }
+                        e.preventDefault();
+                        break;
+                    case 'f':
+                        if (player.isFullscreen()) {
+                            player.exitFullscreen();
+                        } else {
+                            player.requestFullscreen();
+                        }
+                        e.preventDefault();
+                        break;
+                    case 'm':
+                        player.muted(!player.muted());
+                        e.preventDefault();
+                        break;
+                }
+            }
+        });
+
+        // Prevent drag and drop
+        videoElement.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+            return false;
+        });
+
+        // iOS-specific: Resume playback after interruption
+        if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden && player && !player.paused()) {
+                    player.play().catch(e => console.log('Resume playback failed:', e));
+                }
+            });
+        }
+    </script>
+</body>
+</html>
