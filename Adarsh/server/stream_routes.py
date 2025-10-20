@@ -254,7 +254,7 @@ async def generate_download_handler(request: web.Request):
 
 
 @routes.get(r"/watch/{path:\S+}", allow_head=True)
-async def stream_handler(request: web.Request):
+async def watch_handler(request: web.Request):
     try:
         path = request.match_info["path"]
         match = re.search(r"^([a-zA-Z0-9_-]{6})(\d+)$", path)
@@ -278,8 +278,8 @@ async def stream_handler(request: web.Request):
         logging.critical(e.with_traceback(None))
         raise web.HTTPInternalServerError(text=str(e))
 
-@routes.get(r"/{path:\S+}", allow_head=True)
-async def stream_handler(request: web.Request):
+@routes.get(r"/{path:\d+.*}", allow_head=True)
+async def media_handler(request: web.Request):
     try:
         path = request.match_info["path"]
         match = re.search(r"^([a-zA-Z0-9_-]{6})(\d+)$", path)
