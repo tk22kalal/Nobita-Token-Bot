@@ -82,24 +82,20 @@
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
         }
 
-        /* Custom Plyr styling */
+        /* Custom Plyr styling - SIMPLIFIED */
         .plyr {
             border-radius: 0 0 12px 12px;
         }
 
+        /* Simple white play button - no color, no hover */
         .plyr__control--overlaid {
-            background: rgba(123, 97, 255, 0.9);
-            border: 4px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
             border-radius: 50%;
             width: 80px;
             height: 80px;
             padding: 20px;
-            box-shadow: 0 8px 32px rgba(123, 97, 255, 0.6);
-        }
-
-        .plyr__control--overlaid:hover {
-            background: rgba(123, 97, 255, 1);
-            transform: scale(1.1);
+            color: #000;
         }
 
         .plyr__controls {
@@ -111,32 +107,13 @@
             background: linear-gradient(0deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.5) 50%, transparent 100%);
         }
 
-        /* Custom quality button HD label */
-        .plyr__menu__container .plyr__control[data-plyr='quality'] {
-            position: relative;
-        }
-
-        .plyr__menu__container .plyr__control[data-plyr='quality']::before {
-            content: 'HD';
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background: #ff0000;
-            color: white;
-            font-size: 10px;
-            font-weight: bold;
-            padding: 2px 4px;
-            border-radius: 3px;
-            z-index: 10;
-        }
-
         /* Double-tap seek indicators */
         .seek-indicator {
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
-            background: rgba(123, 97, 255, 0.9);
-            color: white;
+            background: rgba(255, 255, 255, 0.9);
+            color: #000;
             padding: 15px 25px;
             border-radius: 50px;
             font-size: 24px;
@@ -145,7 +122,6 @@
             opacity: 0;
             transition: opacity 0.3s;
             z-index: 1000;
-            box-shadow: 0 8px 32px rgba(123, 97, 255, 0.6);
         }
 
         .seek-indicator.left {
@@ -219,8 +195,8 @@
         .spinner {
             width: 60px;
             height: 60px;
-            border: 5px solid rgba(123, 97, 255, 0.3);
-            border-top-color: rgba(123, 97, 255, 1);
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top-color: rgba(255, 255, 255, 1);
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
@@ -255,8 +231,8 @@
                 controlslist="nodownload noremoteplayback"
                 disablepictureinpicture="false"
                 preload="auto"
-                oncontextmenu="return false;"
-                poster="https://envs.sh/4L4.jpg">
+                oncontextmenu="return false;">
+                <!-- Thumbnail poster removed -->
             </video>
         </div>
     </div>
