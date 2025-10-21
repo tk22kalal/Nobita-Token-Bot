@@ -278,7 +278,7 @@ async def watch_handler(request: web.Request):
         logging.critical(e.with_traceback(None))
         raise web.HTTPInternalServerError(text=str(e))
 
-@routes.get(r"/{path:\d+.*}", allow_head=True)
+@routes.get(r"/{path:(?!api/)(?!watch/)(?!prepare/)[A-Za-z0-9_-]*\d.*}", allow_head=True)
 async def media_handler(request: web.Request):
     try:
         path = request.match_info["path"]
@@ -385,7 +385,6 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
     # Enhanced headers for better proxy compatibility, streaming, and iOS/Android iframe support
     headers = {
         "Content-Type": f"{mime_type}",
-        "Content-Range": f"bytes {from_bytes}-{until_bytes}/{file_size}",
         "Content-Length": str(req_length),
         "Content-Disposition": f'{disposition}; filename="{file_name}"',
         "Accept-Ranges": "bytes",
@@ -397,6 +396,11 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
         "X-Content-Type-Options": "nosniff",
         "X-Forwarded-For": request.remote,  # Preserve original IP for Cloudflare
     }
+    
+    # Only include Content-Range header for partial content (206) responses
+    # Including it in 200 OK responses violates HTTP spec and can corrupt downloads
+    if range_header:
+        headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
 
     return web.Response(
         status=206 if range_header else 200,
