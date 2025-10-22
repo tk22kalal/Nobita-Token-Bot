@@ -137,17 +137,26 @@ async def generate_stream_handler(request: web.Request):
         # Get file data from database
         temp_data = await db.get_temp_file(token)
         if not temp_data:
-            return web.json_response({"error": "Link expired or not found"}, status=404)
+            return web.json_response(
+                {"success": False, "error": "Link expired or not found"}, 
+                status=404,
+                content_type='application/json'
+            )
         
         # Get the original message from Telegram
         client = StreamBot  # Use the main bot client
         original_msg = await client.get_messages(temp_data['from_chat_id'], temp_data['message_id'])
         
         if not original_msg:
-            return web.json_response({"error": "Original message not found"}, status=404)
+            return web.json_response(
+                {"success": False, "error": "Original message not found"}, 
+                status=404,
+                content_type='application/json'
+            )
         
         # Copy message to BIN_CHANNEL with retry logic for FloodWait
         max_retries = 3
+        log_msg = None
         for attempt in range(max_retries):
             try:
                 log_msg = await original_msg.copy(
@@ -160,9 +169,28 @@ async def generate_stream_handler(request: web.Request):
                 if attempt < max_retries - 1:
                     await asyncio.sleep(e.x)
                 else:
-                    raise
-        else:
-            return web.json_response({"error": "Max retries exceeded for FloodWait"}, status=429)
+                    return web.json_response(
+                        {"success": False, "error": "Server is busy. Please try again in a few seconds."}, 
+                        status=429,
+                        content_type='application/json'
+                    )
+            except Exception as copy_error:
+                logging.error(f"Error copying message (attempt {attempt + 1}): {copy_error}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                else:
+                    return web.json_response(
+                        {"success": False, "error": "Failed to process file. Please try again."}, 
+                        status=500,
+                        content_type='application/json'
+                    )
+        
+        if not log_msg:
+            return web.json_response(
+                {"success": False, "error": "Failed to process file after retries"}, 
+                status=500,
+                content_type='application/json'
+            )
         
         # Generate streaming URL with /watch/ prefix for stream links
         file_name = get_name(log_msg) or temp_data['file_name'] or "NEXTPULSE"
@@ -184,11 +212,15 @@ async def generate_stream_handler(request: web.Request):
             "success": True,
             "stream_url": stream_link,
             "file_name": file_name
-        })
+        }, content_type='application/json')
         
     except Exception as e:
-        logging.error(f"Error in generate_stream_handler: {e}")
-        return web.json_response({"error": "Failed to generate stream link"}, status=500)
+        logging.error(f"Error in generate_stream_handler: {e}", exc_info=True)
+        return web.json_response(
+            {"success": False, "error": "Server error. Please try again later."}, 
+            status=500,
+            content_type='application/json'
+        )
 
 
 @routes.get(r"/api/download/{token}")
@@ -200,17 +232,26 @@ async def generate_download_handler(request: web.Request):
         # Get file data from database
         temp_data = await db.get_temp_file(token)
         if not temp_data:
-            return web.json_response({"error": "Link expired or not found"}, status=404)
+            return web.json_response(
+                {"success": False, "error": "Link expired or not found"}, 
+                status=404,
+                content_type='application/json'
+            )
         
         # Get the original message from Telegram
         client = StreamBot  # Use the main bot client
         original_msg = await client.get_messages(temp_data['from_chat_id'], temp_data['message_id'])
         
         if not original_msg:
-            return web.json_response({"error": "Original message not found"}, status=404)
+            return web.json_response(
+                {"success": False, "error": "Original message not found"}, 
+                status=404,
+                content_type='application/json'
+            )
         
         # Copy message to BIN_CHANNEL with retry logic for FloodWait
         max_retries = 3
+        log_msg = None
         for attempt in range(max_retries):
             try:
                 log_msg = await original_msg.copy(
@@ -223,9 +264,28 @@ async def generate_download_handler(request: web.Request):
                 if attempt < max_retries - 1:
                     await asyncio.sleep(e.x)
                 else:
-                    raise
-        else:
-            return web.json_response({"error": "Max retries exceeded for FloodWait"}, status=429)
+                    return web.json_response(
+                        {"success": False, "error": "Server is busy. Please try again in a few seconds."}, 
+                        status=429,
+                        content_type='application/json'
+                    )
+            except Exception as copy_error:
+                logging.error(f"Error copying message (attempt {attempt + 1}): {copy_error}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                else:
+                    return web.json_response(
+                        {"success": False, "error": "Failed to process file. Please try again."}, 
+                        status=500,
+                        content_type='application/json'
+                    )
+        
+        if not log_msg:
+            return web.json_response(
+                {"success": False, "error": "Failed to process file after retries"}, 
+                status=500,
+                content_type='application/json'
+            )
         
         # Generate download URL with download=1 parameter (direct file link, not /watch/)
         file_name = get_name(log_msg) or temp_data['file_name'] or "NEXTPULSE"
@@ -246,11 +306,15 @@ async def generate_download_handler(request: web.Request):
             "success": True,
             "download_url": download_link,
             "file_name": file_name
-        })
+        }, content_type='application/json')
         
     except Exception as e:
-        logging.error(f"Error in generate_download_handler: {e}")
-        return web.json_response({"error": "Failed to generate download link"}, status=500)
+        logging.error(f"Error in generate_download_handler: {e}", exc_info=True)
+        return web.json_response(
+            {"success": False, "error": "Server error. Please try again later."}, 
+            status=500,
+            content_type='application/json'
+        )
 
 
 @routes.get(r"/watch/{path:\S+}", allow_head=True)
