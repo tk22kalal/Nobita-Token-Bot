@@ -189,7 +189,7 @@
             }
         });
         
-        async function generateStream(playerType) {
+        async function generateStream(playerType, retryCount = 0) {
             const buttons = document.querySelectorAll('.player-btn, .download-btn');
             const loading = document.querySelector('.loading');
             const statusMessage = document.getElementById('statusMessage');
@@ -200,10 +200,25 @@
             statusMessage.style.display = 'none';
             
             const playerName = playerType === 'plyr' ? 'IOS/PC' : 'ANDROID';
-            loadingText.textContent = `Generating ${playerName} stream link...`;
+            loadingText.textContent = `Generating ${playerName} stream link...${retryCount > 0 ? ` (Retry ${retryCount}/3)` : ''}`;
             
             try {
-                const response = await fetch(`/api/generate/{{token}}?player=${playerType}`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+                
+                const response = await fetch(`/api/generate/{{token}}?player=${playerType}`, {
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                clearTimeout(timeoutId);
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('Server returned non-JSON response. Please try again.');
+                }
+                
                 const data = await response.json();
                 
                 if (data.success) {
@@ -215,6 +230,17 @@
                     throw new Error(data.error || 'Failed to generate stream link');
                 }
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    if (retryCount < 3) {
+                        setTimeout(() => generateStream(playerType, retryCount + 1), 2000);
+                        return;
+                    }
+                    error.message = 'Request timeout. Server is busy, please try again later.';
+                } else if ((error.message.includes('non-JSON') || error.message.includes('JSON')) && retryCount < 3) {
+                    setTimeout(() => generateStream(playerType, retryCount + 1), 2000);
+                    return;
+                }
+                
                 statusMessage.className = 'status-message error';
                 statusMessage.textContent = '❌ ' + error.message;
                 statusMessage.style.display = 'block';
@@ -223,7 +249,7 @@
             }
         }
 
-        async function generateDownload() {
+        async function generateDownload(retryCount = 0) {
             const buttons = document.querySelectorAll('.player-btn, .download-btn');
             const loading = document.querySelector('.loading');
             const statusMessage = document.getElementById('statusMessage');
@@ -232,10 +258,25 @@
             buttons.forEach(btn => btn.disabled = true);
             loading.style.display = 'block';
             statusMessage.style.display = 'none';
-            loadingText.textContent = 'Generating download link...';
+            loadingText.textContent = `Generating download link...${retryCount > 0 ? ` (Retry ${retryCount}/3)` : ''}`;
             
             try {
-                const response = await fetch('/api/download/{{token}}');
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+                
+                const response = await fetch('/api/download/{{token}}', {
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                clearTimeout(timeoutId);
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('Server returned non-JSON response. Please try again.');
+                }
+                
                 const data = await response.json();
                 
                 if (data.success) {
@@ -251,6 +292,17 @@
                     throw new Error(data.error || 'Failed to generate download link');
                 }
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    if (retryCount < 3) {
+                        setTimeout(() => generateDownload(retryCount + 1), 2000);
+                        return;
+                    }
+                    error.message = 'Request timeout. Server is busy, please try again later.';
+                } else if ((error.message.includes('non-JSON') || error.message.includes('JSON')) && retryCount < 3) {
+                    setTimeout(() => generateDownload(retryCount + 1), 2000);
+                    return;
+                }
+                
                 statusMessage.className = 'status-message error';
                 statusMessage.textContent = '❌ ' + error.message;
                 statusMessage.style.display = 'block';
