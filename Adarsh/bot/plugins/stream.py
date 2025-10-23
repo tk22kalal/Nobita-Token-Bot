@@ -367,7 +367,6 @@ async def batch(client: Client, message: Message):
                             
                         await process_message(msg, json_output, skipped_messages)
                 
-                # Prepare JSON output
                 # Prepare JSON output in the required format
                 output_data = {
                     "subjectName": subject_name.lower().replace(" ", ""),
@@ -435,7 +434,7 @@ async def private_receive_handler(c: Client, m: Message):
         await m.reply_text(f"❌ Error processing file: {str(e)}", quote=True)
         print(f"Error in private_receive_handler: {e}")
 
-@StreamBot.on_message((filters.private) & (filters.video | filters.audio | filters.photo), group=3)
+@StreamBot.on_message((filters.private) & (filters.video | filters.audio | filters.photo), group=4)
 async def private_receive_handler_video(c: Client, m: Message):
     try:
         # Create intermediate link instead of immediate stream generation
