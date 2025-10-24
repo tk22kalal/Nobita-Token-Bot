@@ -244,8 +244,8 @@ class ByteStreamer:
                     # request next part (with retries)
                     r = await _send_with_retries(location, offset, chunk_size)
         except FloodWait as e:
-            logging.warning(f"FloodWait: {e.x} seconds. Sleeping then retrying generator...")
-            await asyncio.sleep(e.x)
+            logging.warning(f"FloodWait: {e.value} seconds. Sleeping then retrying generator...")
+            await asyncio.sleep(e.value)
             # After sleeping, resume streaming by delegating to a fresh call of this generator.
             async for inner_chunk in self.yield_file(
                 file_id, index, offset, first_part_cut, last_part_cut, part_count, chunk_size
