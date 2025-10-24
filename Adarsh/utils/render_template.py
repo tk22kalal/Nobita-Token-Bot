@@ -16,9 +16,15 @@ async def render_page(id, secure_hash, src=None, player=None):
         logging.debug(f"link hash: {secure_hash} - {file_data.unique_id[:6]}")
         raise InvalidHash
 
+    # Ensure file_name is a proper string before URL encoding
+    file_name = file_data.file_name or "file"
+    if isinstance(file_name, bytes):
+        file_name = file_name.decode('utf-8', errors='ignore')
+    file_name = str(file_name)
+    
     src = urllib.parse.urljoin(
         Var.URL,
-        f"{id}/{urllib.parse.quote_plus(file_data.file_name)}?hash={secure_hash}",
+        f"{id}/{urllib.parse.quote_plus(file_name)}?hash={secure_hash}",
     )
 
     tag = file_data.mime_type.split("/")[0].strip()
@@ -48,7 +54,8 @@ async def render_page(id, secure_hash, src=None, player=None):
 
     # Sanitize file name for display - remove links, @mentions, #tags, HTML tags
     import re
-    display_name = file_data.file_name.replace("_", " ")
+    # Ensure display_name is a proper string
+    display_name = file_name.replace("_", " ") if file_name else "file"
     # Remove HTML tags
     display_name = re.sub(r'<[^>]+>', '', display_name)
     # Remove @mentions
