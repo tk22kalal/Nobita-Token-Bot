@@ -15,7 +15,7 @@ class CustomClient(Client):
                 await message.forward(member.user.id)
                 await asyncio.sleep(0.5)
             except FloodWait as e:
-                print(f"Sleeping for {str(e.x)}s")
-                await asyncio.sleep(e.x)
+                print(f"Sleeping for {str(e.value)}s")
+                await asyncio.sleep(e.value)
             except Exception as e:
                 print(f"Error forwarding message to user {member.user.id}: {e}")
