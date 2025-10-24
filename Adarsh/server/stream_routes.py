@@ -167,7 +167,7 @@ async def generate_stream_handler(request: web.Request):
                 break
             except FloodWait as e:
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(e.x)
+                    await asyncio.sleep(e.value)
                 else:
                     return web.json_response(
                         {"success": False, "error": "Server is busy. Please try again in a few seconds."}, 
@@ -262,7 +262,7 @@ async def generate_download_handler(request: web.Request):
                 break
             except FloodWait as e:
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(e.x)
+                    await asyncio.sleep(e.value)
                 else:
                     return web.json_response(
                         {"success": False, "error": "Server is busy. Please try again in a few seconds."}, 
