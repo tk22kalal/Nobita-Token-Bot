@@ -194,6 +194,9 @@ async def generate_stream_handler(request: web.Request):
         
         # Generate streaming URL with /watch/ prefix for stream links
         file_name = get_name(log_msg) or temp_data['file_name'] or "NEXTPULSE"
+        if isinstance(file_name, bytes):
+            file_name = file_name.decode('utf-8', errors='ignore')
+        file_name = str(file_name)
         file_hash = get_hash(log_msg)
         
         # Use base URL without domain rotation for consistent links
@@ -289,6 +292,9 @@ async def generate_download_handler(request: web.Request):
         
         # Generate download URL with download=1 parameter (direct file link, not /watch/)
         file_name = get_name(log_msg) or temp_data['file_name'] or "NEXTPULSE"
+        if isinstance(file_name, bytes):
+            file_name = file_name.decode('utf-8', errors='ignore')
+        file_name = str(file_name)
         file_hash = get_hash(log_msg)
         
         # Use base URL for download links
@@ -326,7 +332,10 @@ async def watch_handler(request: web.Request):
             secure_hash = match.group(1)
             id = int(match.group(2))
         else:
-            id = int(re.search(r"(\d+)(?:\/\S+)?", path).group(1))
+            path_match = re.search(r"(\d+)(?:\/\S+)?", path)
+            if not path_match:
+                raise web.HTTPBadRequest(text="Invalid path format")
+            id = int(path_match.group(1))
             secure_hash = request.rel_url.query.get("hash")
         # Get player choice from query parameter (None allows fallback to env var)
         player = request.rel_url.query.get("player")
@@ -351,7 +360,10 @@ async def media_handler(request: web.Request):
             secure_hash = match.group(1)
             id = int(match.group(2))
         else:
-            id = int(re.search(r"(\d+)(?:\/\S+)?", path).group(1))
+            path_match = re.search(r"(\d+)(?:\/\S+)?", path)
+            if not path_match:
+                raise web.HTTPBadRequest(text="Invalid path format")
+            id = int(path_match.group(1))
             secure_hash = request.rel_url.query.get("hash")
         return await media_streamer(request, id, secure_hash)
     except InvalidHash as e:
