@@ -42,8 +42,6 @@ class Var(object):
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
     BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split()))
-    RECAPTCHA_SITE_KEY = str(getenv('RECAPTCHA_SITE_KEY', '6LdCK_crAAAAAD702QCUelFDiZPr5wqL-3qbgk2u'))
-    RECAPTCHA_SECRET_KEY = str(getenv('RECAPTCHA_SECRET_KEY', '6LdCK_crAAAAAMiFPR9Pk5u3Zvnj6G8rNEORAsEV'))
 
     @classmethod
     def get_url_for_file(cls, file_id: str) -> str:
