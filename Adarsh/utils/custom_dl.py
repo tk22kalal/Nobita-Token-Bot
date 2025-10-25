@@ -176,7 +176,15 @@ class ByteStreamer:
         """
         client = self.client
         work_loads[index] += 1
-        logging.debug(f"Starting to yielding file with client {index}.")
+        
+        # Calculate expected total bytes for verification
+        expected_bytes = (part_count - 1) * chunk_size + last_part_cut - first_part_cut
+        bytes_yielded = 0
+        
+        logging.info(f"Starting file stream: parts={part_count}, chunk_size={chunk_size}, "
+                    f"offset={offset}, first_cut={first_part_cut}, last_cut={last_part_cut}, "
+                    f"expected_bytes={expected_bytes}")
+        
         media_session = await self.generate_media_session(client, file_id)
 
         current_part = 1
@@ -224,25 +232,43 @@ class ByteStreamer:
                 while True:
                     chunk = r.bytes
                     if not chunk:
-                        break
-                    elif part_count == 1:
-                        yield chunk[first_part_cut:last_part_cut]
+                        logging.error(f"Empty chunk received at part {current_part}/{part_count}, offset {offset}")
+                        raise Exception(f"Empty chunk at part {current_part}, expected more data")
+                    
+                    # Yield the appropriate portion of the chunk
+                    if part_count == 1:
+                        chunk_data = chunk[first_part_cut:last_part_cut]
                     elif current_part == 1:
-                        yield chunk[first_part_cut:]
+                        chunk_data = chunk[first_part_cut:]
                     elif current_part == part_count:
-                        yield chunk[:last_part_cut]
+                        chunk_data = chunk[:last_part_cut]
                     else:
-                        yield chunk
+                        chunk_data = chunk
+                    
+                    bytes_yielded += len(chunk_data)
+                    yield chunk_data
 
                     current_part += 1
                     offset += chunk_size
 
                     if current_part > part_count:
+                        logging.info(f"Stream completed: {part_count} parts, {bytes_yielded}/{expected_bytes} bytes")
                         break
 
-                    await asyncio.sleep(0.2)  # Add a small delay to avoid FloodWait
+                    # Small delay to avoid flooding Telegram
+                    await asyncio.sleep(0.1)
+                    
                     # request next part (with retries)
                     r = await _send_with_retries(location, offset, chunk_size)
+                    
+                    # Validate the response
+                    if not isinstance(r, raw.types.upload.File):
+                        logging.error(f"Invalid response type at part {current_part}/{part_count}: {type(r)}")
+                        raise Exception(f"Invalid response from Telegram at part {current_part}")
+                    
+                    if not r.bytes:
+                        logging.error(f"No bytes in response at part {current_part}/{part_count}")
+                        raise Exception(f"Empty response from Telegram at part {current_part}")
         except FloodWait as e:
             logging.warning(f"FloodWait: {e.value} seconds. Sleeping then retrying generator...")
             await asyncio.sleep(e.value)
@@ -259,7 +285,10 @@ class ByteStreamer:
             logging.exception("Unexpected error while yielding file: %s", exc)
             raise
         finally:
-            logging.debug(f"Finished yielding file with {max(0, current_part - 1)} parts.")
+            if bytes_yielded < expected_bytes:
+                logging.warning(f"Incomplete stream: yielded {bytes_yielded}/{expected_bytes} bytes "
+                              f"({current_part - 1}/{part_count} parts)")
+            logging.debug(f"Finished yielding file with {max(0, current_part - 1)} parts, {bytes_yielded} bytes")
             work_loads[index] -= 1
 
     
