@@ -28,19 +28,9 @@ routes = web.RouteTableDef()
 # Initialize database conditionally - use a global instance
 db = Database(Var.DATABASE_URL, Var.name)
 
-async def verify_recaptcha(token: str, min_score: float = 0.5) -> bool:
-    """Verify reCAPTCHA v3 token with Google
-    
-    Args:
-        token: The reCAPTCHA response token
-        min_score: Minimum score threshold (0.0 to 1.0). Default 0.5
-                  0.0 is very likely a bot, 1.0 is very likely a good interaction
-    
-    Returns:
-        True if verification succeeds and score >= min_score, False otherwise
-    """
+async def verify_recaptcha(token: str) -> bool:
+    """Verify reCAPTCHA token with Google"""
     if not token:
-        logging.warning("reCAPTCHA verification failed: No token provided")
         return False
     
     try:
@@ -54,25 +44,7 @@ async def verify_recaptcha(token: str, min_score: float = 0.5) -> bool:
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 result = await response.json()
-                
-                success = result.get('success', False)
-                score = result.get('score', 0.0)
-                action = result.get('action', '')
-                
-                logging.info(f"reCAPTCHA v3 verification: success={success}, score={score}, action={action}")
-                
-                if not success:
-                    error_codes = result.get('error-codes', [])
-                    logging.warning(f"reCAPTCHA verification failed: {error_codes}")
-                    return False
-                
-                # Check score threshold (v3 specific)
-                if score < min_score:
-                    logging.warning(f"reCAPTCHA score {score} below threshold {min_score}")
-                    return False
-                
-                return True
-                
+                return result.get('success', False)
     except Exception as e:
         logging.error(f"reCAPTCHA verification error: {e}")
         return False
