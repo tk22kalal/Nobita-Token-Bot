@@ -7,7 +7,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{file_name}} - Generate Stream</title>
-    <script src="https://www.google.com/recaptcha/api.js?render={{recaptcha_site_key}}"></script>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
     <style>
         body {
             background: white;
@@ -125,6 +125,12 @@
             border: 1px solid #f5c6cb;
         }
 
+        .captcha-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
         @media (max-width: 480px) {
             .player-btn {
                 width: 140px;
@@ -143,17 +149,21 @@
 
 <body>
     <div class="container">
+        <div class="captcha-container">
+            <div class="g-recaptcha" data-sitekey="{{recaptcha_site_key}}" data-callback="onCaptchaSuccess"></div>
+        </div>
+
         <div class="player-buttons">
-            <button type="button" class="player-btn" id="plyrBtn" onclick="generateStream('plyr')" aria-label="Stream with IOS/PC">
+            <button type="button" class="player-btn" id="plyrBtn" onclick="generateStream('plyr')" aria-label="Stream with IOS/PC" disabled>
                 IOS/PC
             </button>
-            <button type="button" class="player-btn" id="videojsBtn" onclick="generateStream('videojs')" aria-label="Stream with ANDROID">
+            <button type="button" class="player-btn" id="videojsBtn" onclick="generateStream('videojs')" aria-label="Stream with ANDROID" disabled>
                 ANDROID
             </button>
         </div>
 
         <div>
-            <button type="button" class="download-btn" id="downloadBtn" onclick="generateDownload()" aria-label="Generate download link">
+            <button type="button" class="download-btn" id="downloadBtn" onclick="generateDownload()" aria-label="Generate download link" disabled>
                 DOWNLOAD
             </button>
         </div>
@@ -167,22 +177,22 @@
     </div>
 
     <script>
-        const RECAPTCHA_SITE_KEY = '{{recaptcha_site_key}}';
+        let captchaToken = null;
+        
+        function onCaptchaSuccess(token) {
+            captchaToken = token;
+            const plyrBtn = document.getElementById('plyrBtn');
+            const videojsBtn = document.getElementById('videojsBtn');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            plyrBtn.disabled = false;
+            videojsBtn.disabled = false;
+            downloadBtn.disabled = false;
+        }
         
         const urlParams = new URLSearchParams(window.location.search);
         const linkType = urlParams.get('type');
         const player = urlParams.get('player');
-        
-        // Get reCAPTCHA token
-        async function getCaptchaToken(action) {
-            return new Promise((resolve, reject) => {
-                grecaptcha.ready(() => {
-                    grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: action })
-                        .then(token => resolve(token))
-                        .catch(err => reject(err));
-                });
-            });
-        }
         
         window.addEventListener('DOMContentLoaded', () => {
             const plyrBtn = document.getElementById('plyrBtn');
@@ -204,6 +214,11 @@
         });
         
         async function generateStream(playerType, retryCount = 0) {
+            if (!captchaToken) {
+                alert('Please complete the reCAPTCHA verification first.');
+                return;
+            }
+            
             const buttons = document.querySelectorAll('.player-btn, .download-btn');
             const loading = document.querySelector('.loading');
             const statusMessage = document.getElementById('statusMessage');
@@ -214,14 +229,9 @@
             statusMessage.style.display = 'none';
             
             const playerName = playerType === 'plyr' ? 'IOS/PC' : 'ANDROID';
-            loadingText.textContent = `Verifying...`;
+            loadingText.textContent = `Generating ${playerName} stream link...${retryCount > 0 ? ` (Retry ${retryCount}/3)` : ''}`;
             
             try {
-                // Get reCAPTCHA token
-                const captchaToken = await getCaptchaToken('generate_stream');
-                
-                loadingText.textContent = `Generating ${playerName} stream link...${retryCount > 0 ? ` (Retry ${retryCount}/3)` : ''}`;
-                
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 30000);
                 
@@ -272,6 +282,11 @@
         }
 
         async function generateDownload(retryCount = 0) {
+            if (!captchaToken) {
+                alert('Please complete the reCAPTCHA verification first.');
+                return;
+            }
+            
             const buttons = document.querySelectorAll('.player-btn, .download-btn');
             const loading = document.querySelector('.loading');
             const statusMessage = document.getElementById('statusMessage');
@@ -280,14 +295,9 @@
             buttons.forEach(btn => btn.disabled = true);
             loading.style.display = 'block';
             statusMessage.style.display = 'none';
-            loadingText.textContent = `Verifying...`;
+            loadingText.textContent = `Generating download link...${retryCount > 0 ? ` (Retry ${retryCount}/3)` : ''}`;
             
             try {
-                // Get reCAPTCHA token
-                const captchaToken = await getCaptchaToken('generate_download');
-                
-                loadingText.textContent = `Generating download link...${retryCount > 0 ? ` (Retry ${retryCount}/3)` : ''}`;
-                
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 30000);
                 
