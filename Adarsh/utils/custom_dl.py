@@ -182,7 +182,7 @@ class ByteStreamer:
         current_part = 1
         location = await self.get_location(file_id)
 
-        max_retries = 3
+        max_retries = 5
 
         async def _send_with_retries(loc, off, lim):
             """
@@ -200,7 +200,7 @@ class ByteStreamer:
                 except FloodWait:
                     # Let outer handler manage FloodWait (so sleeping and retrying whole generator)
                     raise
-                except (OSError, ConnectionResetError) as e:
+                except (OSError, ConnectionResetError, TimeoutError, asyncio.TimeoutError) as e:
                     attempts += 1
                     logging.warning(f"Transport error while getting file (attempt {attempts}): {e!r}")
                     # stop and remove the broken media session so it will be recreated
@@ -240,7 +240,7 @@ class ByteStreamer:
                     if current_part > part_count:
                         break
 
-                    await asyncio.sleep(0.5)  # Add a delay to avoid FloodWait
+                    await asyncio.sleep(0.2)  # Add a small delay to avoid FloodWait
                     # request next part (with retries)
                     r = await _send_with_retries(location, offset, chunk_size)
         except FloodWait as e:
@@ -252,10 +252,12 @@ class ByteStreamer:
             ):
                 yield inner_chunk
         except (TimeoutError, AttributeError) as exc:
-            logging.debug("Timeout or attribute error while streaming file.", exc_info=True)
+            logging.error("Timeout or attribute error while streaming file - aborting transfer", exc_info=True)
+            raise
         except Exception as exc:
-            # Log unexpected exceptions instead of letting aiohttp crash without context
+            # Log and re-raise to ensure aiohttp properly aborts the transfer
             logging.exception("Unexpected error while yielding file: %s", exc)
+            raise
         finally:
             logging.debug(f"Finished yielding file with {max(0, current_part - 1)} parts.")
             work_loads[index] -= 1
