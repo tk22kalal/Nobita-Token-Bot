@@ -7,7 +7,9 @@ from Adarsh.bot import work_loads
 from pyrogram import Client, utils, raw
 from .file_properties import get_file_ids
 from pyrogram.session import Session, Auth
-from pyrogram.errors import AuthBytesInvalid, FloodWait
+from pyrogram.errors import AuthBytesInvalid, FloodWait, RPCError
+from pyrogram.errors.exceptions.service_unavailable_503 import Timeout as TelegramTimeout
+from pyrogram.errors.exceptions.internal_server_error_500 import InternalServerError
 from Adarsh.server.exceptions import FIleNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
 
@@ -208,6 +210,28 @@ class ByteStreamer:
                 except FloodWait:
                     # Let outer handler manage FloodWait (so sleeping and retrying whole generator)
                     raise
+                except (TelegramTimeout, InternalServerError) as e:
+                    attempts += 1
+                    logging.warning(f"Telegram server error (attempt {attempts}/{max_retries}): {e!r}")
+                    if attempts >= max_retries:
+                        logging.error(f"Max retries ({max_retries}) reached due to Telegram server errors.")
+                        raise
+                    # Exponential backoff for server errors, max 60 seconds
+                    await asyncio.sleep(min(3 ** attempts, 60))
+                    continue
+                except RPCError as e:
+                    # Catch any other RPC errors from Telegram
+                    if e.CODE in [503, 500, 502, 504]:
+                        attempts += 1
+                        logging.warning(f"Telegram RPC error {e.CODE} (attempt {attempts}/{max_retries}): {e!r}")
+                        if attempts >= max_retries:
+                            logging.error(f"Max retries ({max_retries}) reached due to Telegram RPC errors.")
+                            raise
+                        await asyncio.sleep(min(3 ** attempts, 60))
+                        continue
+                    else:
+                        # Re-raise other RPC errors immediately (e.g., authentication errors)
+                        raise
                 except (OSError, ConnectionResetError, TimeoutError, asyncio.TimeoutError) as e:
                     attempts += 1
                     logging.warning(f"Transport error while getting file (attempt {attempts}/{max_retries}): {e!r}")
