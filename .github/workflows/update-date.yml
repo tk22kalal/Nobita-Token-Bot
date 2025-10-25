@@ -1,0 +1,37 @@
+name: Daily Date Updater
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # Runs every day at 3:00 AM UTC
+  workflow_dispatch:      # allows manual trigger
+
+jobs:
+  update-date:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo (token branch)
+        uses: actions/checkout@v4
+        with:
+          ref: token
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}
+
+      - name: Pull latest changes from remote
+        run: git pull origin token --rebase
+
+      - name: Update date in file
+        run: |
+          NOW=$(date +'%Y-%m-%d %H:%M:%S')
+          echo "Last updated: $NOW" > date.txt   # overwrite with date + time
+
+      - name: Commit and push changes
+        run: |
+          git add date.txt
+          git commit -m "Update date to $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git push origin token
