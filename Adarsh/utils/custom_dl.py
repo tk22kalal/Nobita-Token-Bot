@@ -190,7 +190,7 @@ class ByteStreamer:
         current_part = 1
         location = await self.get_location(file_id)
 
-        max_retries = 5
+        max_retries = 10
 
         async def _send_with_retries(loc, off, lim):
             """
@@ -210,17 +210,17 @@ class ByteStreamer:
                     raise
                 except (OSError, ConnectionResetError, TimeoutError, asyncio.TimeoutError) as e:
                     attempts += 1
-                    logging.warning(f"Transport error while getting file (attempt {attempts}): {e!r}")
+                    logging.warning(f"Transport error while getting file (attempt {attempts}/{max_retries}): {e!r}")
                     # stop and remove the broken media session so it will be recreated
                     try:
                         await media_session.stop()
                     except Exception:
                         logging.debug("Error while stopping media session after connection error.", exc_info=True)
                     client.media_sessions.pop(file_id.dc_id, None)
-                    if attempts > max_retries:
-                        logging.error("Max retries reached while trying to recover media session.")
+                    if attempts >= max_retries:
+                        logging.error(f"Max retries ({max_retries}) reached while trying to recover media session.")
                         raise
-                    await asyncio.sleep(2 ** attempts)
+                    await asyncio.sleep(min(2 ** attempts, 30))
                     # recreate session
                     media_session = await self.generate_media_session(client, file_id)
                     continue
@@ -232,6 +232,9 @@ class ByteStreamer:
                 while True:
                     chunk = r.bytes
                     if not chunk:
+                        if current_part > part_count:
+                            logging.info(f"Stream completed at end: {current_part - 1} parts, {bytes_yielded} bytes")
+                            break
                         logging.error(f"Empty chunk received at part {current_part}/{part_count}, offset {offset}")
                         raise Exception(f"Empty chunk at part {current_part}, expected more data")
                     
@@ -254,9 +257,6 @@ class ByteStreamer:
                     if current_part > part_count:
                         logging.info(f"Stream completed: {part_count} parts, {bytes_yielded}/{expected_bytes} bytes")
                         break
-
-                    # Small delay to avoid flooding Telegram
-                    await asyncio.sleep(0.1)
                     
                     # request next part (with retries)
                     r = await _send_with_retries(location, offset, chunk_size)
@@ -265,10 +265,6 @@ class ByteStreamer:
                     if not isinstance(r, raw.types.upload.File):
                         logging.error(f"Invalid response type at part {current_part}/{part_count}: {type(r)}")
                         raise Exception(f"Invalid response from Telegram at part {current_part}")
-                    
-                    if not r.bytes:
-                        logging.error(f"No bytes in response at part {current_part}/{part_count}")
-                        raise Exception(f"Empty response from Telegram at part {current_part}")
         except FloodWait as e:
             logging.warning(f"FloodWait: {e.value} seconds. Sleeping then retrying generator...")
             await asyncio.sleep(e.value)
