@@ -199,11 +199,17 @@ async def generate_stream_handler(request: web.Request):
         file_name = str(file_name)
         file_hash = get_hash(log_msg)
         
-        # Use base URL without domain rotation for consistent links
-        if Var.HAS_SSL:
-            base_url = f"https://{Var.FQDN}/"
+        # Use the same domain from the incoming request for consistent subdomain routing
+        # Check X-Forwarded-Proto for proper HTTPS detection behind reverse proxies (Heroku, etc.)
+        request_host = request.host
+        forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
+        if forwarded_proto in ('https', 'http'):
+            scheme = forwarded_proto
+        elif Var.HAS_SSL:
+            scheme = 'https'
         else:
-            base_url = f"http://{Var.FQDN}/"
+            scheme = request.scheme if request.scheme else 'http'
+        base_url = f"{scheme}://{request_host}/"
         
         # Include player parameter in stream URL
         stream_link = f"{base_url}watch/{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}&player={player}"
@@ -297,11 +303,17 @@ async def generate_download_handler(request: web.Request):
         file_name = str(file_name)
         file_hash = get_hash(log_msg)
         
-        # Use base URL for download links
-        if Var.HAS_SSL:
-            base_url = f"https://{Var.FQDN}/"
+        # Use the same domain from the incoming request for consistent subdomain routing
+        # Check X-Forwarded-Proto for proper HTTPS detection behind reverse proxies (Heroku, etc.)
+        request_host = request.host
+        forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
+        if forwarded_proto in ('https', 'http'):
+            scheme = forwarded_proto
+        elif Var.HAS_SSL:
+            scheme = 'https'
         else:
-            base_url = f"http://{Var.FQDN}/"
+            scheme = request.scheme if request.scheme else 'http'
+        base_url = f"{scheme}://{request_host}/"
         
         download_link = f"{base_url}{log_msg.id}/{quote_plus(file_name)}?hash={file_hash}&download=1"
         
