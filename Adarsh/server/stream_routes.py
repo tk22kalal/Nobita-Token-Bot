@@ -5,6 +5,7 @@ import logging
 import secrets
 import mimetypes
 import asyncio
+import aiohttp
 from aiohttp import web
 from aiohttp.http_exceptions import BadStatusLine
 from pyrogram.errors import FloodWait
@@ -27,6 +28,27 @@ routes = web.RouteTableDef()
 # Initialize database conditionally - use a global instance
 db = Database(Var.DATABASE_URL, Var.name)
 
+async def verify_recaptcha(token: str) -> bool:
+    """Verify reCAPTCHA token with Google"""
+    if not token:
+        return False
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                'https://www.google.com/recaptcha/api/siteverify',
+                data={
+                    'secret': Var.RECAPTCHA_SECRET_KEY,
+                    'response': token
+                },
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                result = await response.json()
+                return result.get('success', False)
+    except Exception as e:
+        logging.error(f"reCAPTCHA verification error: {e}")
+        return False
+
 async def render_prepare_page(temp_data):
     """Render the intermediate page template"""
     try:
@@ -48,6 +70,7 @@ async def render_prepare_page(temp_data):
         template_content = template_content.replace("{{file_size}}", file_size)
         template_content = template_content.replace("{{token}}", temp_data['token'])
         template_content = template_content.replace("{{tag}}", tag)
+        template_content = template_content.replace("{{recaptcha_site_key}}", Var.RECAPTCHA_SITE_KEY)
         
         return template_content
         
@@ -126,11 +149,31 @@ async def prepare_stream_handler(request: web.Request):
         return web.Response(text="❌ Error loading page", status=500)
 
 
-@routes.get(r"/api/generate/{token}")
+@routes.post(r"/api/generate/{token}")
 async def generate_stream_handler(request: web.Request):
     """API endpoint to generate actual stream link by copying to BIN_CHANNEL"""
     try:
         token = request.match_info["token"]
+        
+        # Get request body
+        try:
+            body = await request.json()
+            recaptcha_token = body.get('recaptcha_token', '')
+        except Exception:
+            return web.json_response(
+                {"success": False, "error": "Invalid request format"}, 
+                status=400,
+                content_type='application/json'
+            )
+        
+        # Verify reCAPTCHA
+        if not await verify_recaptcha(recaptcha_token):
+            return web.json_response(
+                {"success": False, "error": "reCAPTCHA verification failed. Please try again."}, 
+                status=403,
+                content_type='application/json'
+            )
+        
         # Get player choice from query parameter (plyr or videojs)
         player = request.rel_url.query.get("player", "plyr")
         
@@ -232,11 +275,30 @@ async def generate_stream_handler(request: web.Request):
         )
 
 
-@routes.get(r"/api/download/{token}")
+@routes.post(r"/api/download/{token}")
 async def generate_download_handler(request: web.Request):
     """API endpoint to generate download link by copying to BIN_CHANNEL"""
     try:
         token = request.match_info["token"]
+        
+        # Get request body
+        try:
+            body = await request.json()
+            recaptcha_token = body.get('recaptcha_token', '')
+        except Exception:
+            return web.json_response(
+                {"success": False, "error": "Invalid request format"}, 
+                status=400,
+                content_type='application/json'
+            )
+        
+        # Verify reCAPTCHA
+        if not await verify_recaptcha(recaptcha_token):
+            return web.json_response(
+                {"success": False, "error": "reCAPTCHA verification failed. Please try again."}, 
+                status=403,
+                content_type='application/json'
+            )
         
         # Get file data from database
         temp_data = await db.get_temp_file(token)
