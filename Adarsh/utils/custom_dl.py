@@ -178,137 +178,47 @@ class ByteStreamer:
         """
         client = self.client
         work_loads[index] += 1
-        
-        # Calculate expected total bytes for verification
-        expected_bytes = (part_count - 1) * chunk_size + last_part_cut - first_part_cut
-        bytes_yielded = 0
-        
-        logging.info(f"Starting file stream: parts={part_count}, chunk_size={chunk_size}, "
-                    f"offset={offset}, first_cut={first_part_cut}, last_cut={last_part_cut}, "
-                    f"expected_bytes={expected_bytes}")
-        
+        logging.debug(f"Starting to yielding file with client {index}.")
         media_session = await self.generate_media_session(client, file_id)
 
         current_part = 1
         location = await self.get_location(file_id)
 
-        max_retries = 10
-
-        async def _send_with_retries(loc, off, lim):
-            """
-            Helper to send GetFile requests with retries on connection errors.
-            Recreates media session and retries a few times before giving up.
-            FloodWait is re-raised to be handled by outer scope.
-            """
-            nonlocal media_session
-            attempts = 0
-            while True:
-                try:
-                    return await media_session.send(
-                        raw.functions.upload.GetFile(location=loc, offset=off, limit=lim)
-                    )
-                except FloodWait:
-                    # Let outer handler manage FloodWait (so sleeping and retrying whole generator)
-                    raise
-                except (TelegramTimeout, InternalServerError) as e:
-                    attempts += 1
-                    logging.warning(f"Telegram server error (attempt {attempts}/{max_retries}): {e!r}")
-                    if attempts >= max_retries:
-                        logging.error(f"Max retries ({max_retries}) reached due to Telegram server errors.")
-                        raise
-                    # Exponential backoff for server errors, max 60 seconds
-                    await asyncio.sleep(min(3 ** attempts, 60))
-                    continue
-                except RPCError as e:
-                    # Catch any other RPC errors from Telegram
-                    if e.CODE in [503, 500, 502, 504]:
-                        attempts += 1
-                        logging.warning(f"Telegram RPC error {e.CODE} (attempt {attempts}/{max_retries}): {e!r}")
-                        if attempts >= max_retries:
-                            logging.error(f"Max retries ({max_retries}) reached due to Telegram RPC errors.")
-                            raise
-                        await asyncio.sleep(min(3 ** attempts, 60))
-                        continue
-                    else:
-                        # Re-raise other RPC errors immediately (e.g., authentication errors)
-                        raise
-                except (OSError, ConnectionResetError, TimeoutError, asyncio.TimeoutError) as e:
-                    attempts += 1
-                    logging.warning(f"Transport error while getting file (attempt {attempts}/{max_retries}): {e!r}")
-                    # stop and remove the broken media session so it will be recreated
-                    try:
-                        await media_session.stop()
-                    except Exception:
-                        logging.debug("Error while stopping media session after connection error.", exc_info=True)
-                    client.media_sessions.pop(file_id.dc_id, None)
-                    if attempts >= max_retries:
-                        logging.error(f"Max retries ({max_retries}) reached while trying to recover media session.")
-                        raise
-                    await asyncio.sleep(min(2 ** attempts, 30))
-                    # recreate session
-                    media_session = await self.generate_media_session(client, file_id)
-                    continue
-
         try:
-            # initial request (with retries)
-            r = await _send_with_retries(location, offset, chunk_size)
+            r = await media_session.send(
+                raw.functions.upload.GetFile(
+                    location=location, offset=offset, limit=chunk_size
+                ),
+            )
             if isinstance(r, raw.types.upload.File):
                 while True:
                     chunk = r.bytes
                     if not chunk:
-                        if current_part > part_count:
-                            logging.info(f"Stream completed at end: {current_part - 1} parts, {bytes_yielded} bytes")
-                            break
-                        logging.error(f"Empty chunk received at part {current_part}/{part_count}, offset {offset}")
-                        raise Exception(f"Empty chunk at part {current_part}, expected more data")
-                    
-                    # Yield the appropriate portion of the chunk
-                    if part_count == 1:
-                        chunk_data = chunk[first_part_cut:last_part_cut]
+                        break
+                    elif part_count == 1:
+                        yield chunk[first_part_cut:last_part_cut]
                     elif current_part == 1:
-                        chunk_data = chunk[first_part_cut:]
+                        yield chunk[first_part_cut:]
                     elif current_part == part_count:
-                        chunk_data = chunk[:last_part_cut]
+                        yield chunk[:last_part_cut]
                     else:
-                        chunk_data = chunk
-                    
-                    bytes_yielded += len(chunk_data)
-                    yield chunk_data
+                        yield chunk
 
                     current_part += 1
                     offset += chunk_size
 
                     if current_part > part_count:
-                        logging.info(f"Stream completed: {part_count} parts, {bytes_yielded}/{expected_bytes} bytes")
                         break
-                    
-                    # request next part (with retries)
-                    r = await _send_with_retries(location, offset, chunk_size)
-                    
-                    # Validate the response
-                    if not isinstance(r, raw.types.upload.File):
-                        logging.error(f"Invalid response type at part {current_part}/{part_count}: {type(r)}")
-                        raise Exception(f"Invalid response from Telegram at part {current_part}")
-        except FloodWait as e:
-            logging.warning(f"FloodWait: {e.value} seconds. Sleeping then retrying generator...")
-            await asyncio.sleep(e.value)
-            # After sleeping, resume streaming by delegating to a fresh call of this generator.
-            async for inner_chunk in self.yield_file(
-                file_id, index, offset, first_part_cut, last_part_cut, part_count, chunk_size
-            ):
-                yield inner_chunk
-        except (TimeoutError, AttributeError) as exc:
-            logging.error("Timeout or attribute error while streaming file - aborting transfer", exc_info=True)
-            raise
-        except Exception as exc:
-            # Log and re-raise to ensure aiohttp properly aborts the transfer
-            logging.exception("Unexpected error while yielding file: %s", exc)
-            raise
+
+                    r = await media_session.send(
+                        raw.functions.upload.GetFile(
+                            location=location, offset=offset, limit=chunk_size
+                        ),
+                    )
+        except (TimeoutError, AttributeError):
+            pass
         finally:
-            if bytes_yielded < expected_bytes:
-                logging.warning(f"Incomplete stream: yielded {bytes_yielded}/{expected_bytes} bytes "
-                              f"({current_part - 1}/{part_count} parts)")
-            logging.debug(f"Finished yielding file with {max(0, current_part - 1)} parts, {bytes_yielded} bytes")
+            logging.debug("Finished yielding file with {current_part} parts.")
             work_loads[index] -= 1
 
     
