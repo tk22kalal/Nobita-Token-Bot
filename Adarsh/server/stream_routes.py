@@ -29,7 +29,7 @@ routes = web.RouteTableDef()
 db = Database(Var.DATABASE_URL, Var.name)
 
 async def verify_recaptcha(token: str) -> bool:
-    """Verify reCAPTCHA v2 token with Google"""
+    """Verify reCAPTCHA token with Google"""
     if not token:
         return False
     
@@ -44,13 +44,7 @@ async def verify_recaptcha(token: str) -> bool:
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 result = await response.json()
-                success = result.get('success', False)
-                
-                if not success:
-                    error_codes = result.get('error-codes', [])
-                    logging.warning(f"reCAPTCHA verification failed: {error_codes}")
-                
-                return success
+                return result.get('success', False)
     except Exception as e:
         logging.error(f"reCAPTCHA verification error: {e}")
         return False
