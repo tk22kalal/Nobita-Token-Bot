@@ -1,17 +1,16 @@
 import math
 import asyncio
 import logging
-from Adarsh.vars import Var
+from biisal.vars import Var
 from typing import Dict, Union
-from Adarsh.bot import work_loads
+from biisal.bot import work_loads
 from pyrogram import Client, utils, raw
 from .file_properties import get_file_ids
 from pyrogram.session import Session, Auth
-from pyrogram.errors import AuthBytesInvalid, FloodWait, RPCError
-from pyrogram.errors.exceptions.service_unavailable_503 import Timeout as TelegramTimeout
-from pyrogram.errors.exceptions.internal_server_error_500 import InternalServerError
-from Adarsh.server.exceptions import FIleNotFound
+from pyrogram.errors import AuthBytesInvalid, FloodWait
+from biisal.server.exceptions import FIleNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
+
 
 class ByteStreamer:
     def __init__(self, client: Client):
@@ -185,11 +184,20 @@ class ByteStreamer:
         location = await self.get_location(file_id)
 
         try:
-            r = await media_session.send(
-                raw.functions.upload.GetFile(
-                    location=location, offset=offset, limit=chunk_size
-                ),
-            )
+            # Initial request with flood wait handling
+            while True:
+                try:
+                    r = await media_session.send(
+                        raw.functions.upload.GetFile(
+                            location=location, offset=offset, limit=chunk_size
+                        ),
+                    )
+                    break
+                except FloodWait as e:
+                    logging.warning(f"FloodWait: Waiting for {e.value} seconds")
+                    await asyncio.sleep(e.value)
+                    continue
+
             if isinstance(r, raw.types.upload.File):
                 while True:
                     chunk = r.bytes
@@ -210,15 +218,25 @@ class ByteStreamer:
                     if current_part > part_count:
                         break
 
-                    r = await media_session.send(
-                        raw.functions.upload.GetFile(
-                            location=location, offset=offset, limit=chunk_size
-                        ),
-                    )
-        except (TimeoutError, AttributeError):
+                    # Subsequent requests with flood wait handling
+                    while True:
+                        try:
+                            r = await media_session.send(
+                                raw.functions.upload.GetFile(
+                                    location=location, offset=offset, limit=chunk_size
+                                ),
+                            )
+                            break
+                        except FloodWait as e:
+                            logging.warning(f"FloodWait: Waiting for {e.value} seconds")
+                            await asyncio.sleep(e.value)
+                            continue
+
+        except (TimeoutError, AttributeError) as e:
+            logging.error(f"Error yielding file: {e}")
             pass
         finally:
-            logging.debug("Finished yielding file with {current_part} parts.")
+            logging.debug(f"Finished yielding file with {current_part} parts.")
             work_loads[index] -= 1
 
     
