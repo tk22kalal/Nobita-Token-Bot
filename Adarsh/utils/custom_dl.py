@@ -1,14 +1,16 @@
 import math
 import asyncio
 import logging
-from biisal.vars import Var
+from Adarsh.vars import Var
 from typing import Dict, Union
-from biisal.bot import work_loads
+from Adarsh.bot import work_loads
 from pyrogram import Client, utils, raw
 from .file_properties import get_file_ids
 from pyrogram.session import Session, Auth
-from pyrogram.errors import AuthBytesInvalid, FloodWait
-from biisal.server.exceptions import FIleNotFound
+from pyrogram.errors import AuthBytesInvalid, FloodWait, RPCError
+from pyrogram.errors.exceptions.service_unavailable_503 import Timeout as TelegramTimeout
+from pyrogram.errors.exceptions.internal_server_error_500 import InternalServerError
+from Adarsh.server.exceptions import FIleNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
 
 
