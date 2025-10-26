@@ -7,7 +7,6 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{file_name}} - Generate Stream</title>
-    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
     <style>
         body {
             background: white;
@@ -125,12 +124,6 @@
             border: 1px solid #f5c6cb;
         }
 
-        .captcha-container {
-            display: flex;
-            justify-content: center;
-            margin: 20px 0;
-        }
-
         @media (max-width: 480px) {
             .player-btn {
                 width: 140px;
@@ -149,21 +142,17 @@
 
 <body>
     <div class="container">
-        <div class="captcha-container">
-            <div class="g-recaptcha" data-sitekey="{{recaptcha_site_key}}" data-callback="onCaptchaSuccess"></div>
-        </div>
-
         <div class="player-buttons">
-            <button type="button" class="player-btn" id="plyrBtn" onclick="generateStream('plyr')" aria-label="Stream with IOS/PC" disabled>
+            <button type="button" class="player-btn" id="plyrBtn" onclick="generateStream('plyr')" aria-label="Stream with IOS/PC">
                 IOS/PC
             </button>
-            <button type="button" class="player-btn" id="videojsBtn" onclick="generateStream('videojs')" aria-label="Stream with ANDROID" disabled>
+            <button type="button" class="player-btn" id="videojsBtn" onclick="generateStream('videojs')" aria-label="Stream with ANDROID">
                 ANDROID
             </button>
         </div>
 
         <div>
-            <button type="button" class="download-btn" id="downloadBtn" onclick="generateDownload()" aria-label="Generate download link" disabled>
+            <button type="button" class="download-btn" id="downloadBtn" onclick="generateDownload()" aria-label="Generate download link">
                 DOWNLOAD
             </button>
         </div>
@@ -177,19 +166,6 @@
     </div>
 
     <script>
-        let captchaToken = null;
-        
-        function onCaptchaSuccess(token) {
-            captchaToken = token;
-            const plyrBtn = document.getElementById('plyrBtn');
-            const videojsBtn = document.getElementById('videojsBtn');
-            const downloadBtn = document.getElementById('downloadBtn');
-            
-            plyrBtn.disabled = false;
-            videojsBtn.disabled = false;
-            downloadBtn.disabled = false;
-        }
-        
         const urlParams = new URLSearchParams(window.location.search);
         const linkType = urlParams.get('type');
         const player = urlParams.get('player');
@@ -214,11 +190,6 @@
         });
         
         async function generateStream(playerType, retryCount = 0) {
-            if (!captchaToken) {
-                alert('Please complete the reCAPTCHA verification first.');
-                return;
-            }
-            
             const buttons = document.querySelectorAll('.player-btn, .download-btn');
             const loading = document.querySelector('.loading');
             const statusMessage = document.getElementById('statusMessage');
@@ -236,13 +207,10 @@
                 const timeoutId = setTimeout(() => controller.abort(), 30000);
                 
                 const response = await fetch(`/api/generate/{{token}}?player=${playerType}`, {
-                    method: 'POST',
                     signal: controller.signal,
                     headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ recaptcha_token: captchaToken })
+                        'Accept': 'application/json'
+                    }
                 });
                 clearTimeout(timeoutId);
                 
@@ -282,11 +250,6 @@
         }
 
         async function generateDownload(retryCount = 0) {
-            if (!captchaToken) {
-                alert('Please complete the reCAPTCHA verification first.');
-                return;
-            }
-            
             const buttons = document.querySelectorAll('.player-btn, .download-btn');
             const loading = document.querySelector('.loading');
             const statusMessage = document.getElementById('statusMessage');
@@ -302,13 +265,10 @@
                 const timeoutId = setTimeout(() => controller.abort(), 30000);
                 
                 const response = await fetch('/api/download/{{token}}', {
-                    method: 'POST',
                     signal: controller.signal,
                     headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ recaptcha_token: captchaToken })
+                        'Accept': 'application/json'
+                    }
                 });
                 clearTimeout(timeoutId);
                 
@@ -321,23 +281,13 @@
                 
                 if (data.success) {
                     statusMessage.className = 'status-message success';
-                    statusMessage.textContent = '✅ Download link ready! Click below to download.';
+                    statusMessage.textContent = '✅ Download link generated! Starting download...';
                     statusMessage.style.display = 'block';
-                    
-                    const downloadLink = document.createElement('a');
-                    downloadLink.href = data.download_url;
-                    downloadLink.textContent = '📥 Click here to download';
-                    downloadLink.className = 'download-btn';
-                    downloadLink.style.display = 'inline-block';
-                    downloadLink.style.marginTop = '20px';
-                    downloadLink.style.textDecoration = 'none';
-                    downloadLink.style.lineHeight = '50px';
-                    
-                    statusMessage.appendChild(document.createElement('br'));
-                    statusMessage.appendChild(downloadLink);
-                    
-                    buttons.forEach(btn => btn.disabled = false);
-                    loading.style.display = 'none';
+                    window.location.href = data.download_url;
+                    setTimeout(() => {
+                        buttons.forEach(btn => btn.disabled = false);
+                        loading.style.display = 'none';
+                    }, 2000);
                 } else {
                     throw new Error(data.error || 'Failed to generate download link');
                 }
