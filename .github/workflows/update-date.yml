@@ -3,7 +3,7 @@ name: Daily Date Updater
 on:
   schedule:
     - cron: "0 3 * * *"  # Runs every day at 3:00 AM UTC
-  workflow_dispatch:      # allows manual trigger
+  workflow_dispatch:      # Allows manual trigger
 
 jobs:
   update-date:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repo (main branch)
         uses: actions/checkout@v4
         with:
-          ref: token
+          ref: main
           token: ${{ secrets.GH_PAT }}
 
       - name: Set up Git
@@ -28,7 +28,7 @@ jobs:
       - name: Update date in file
         run: |
           NOW=$(date +'%Y-%m-%d %H:%M:%S')
-          echo "Last updated: $NOW" > date.txt   # overwrite with date + time
+          echo "Last updated: $NOW" > date.txt   # Overwrite with date + time
 
       - name: Commit and push changes
         run: |
