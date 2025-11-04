@@ -85,7 +85,7 @@ async def create_intermediate_link(message: Message):
     
     return intermediate_link, caption
 
-async def create_intermediate_link_for_batch(message: Message, folder_name: str = None, client: Client = None):
+async def create_intermediate_link_for_batch(message: Message, folder_name: str = None, client: Client = None, shared_thumbnail_url: str = None):
     """Create intermediate links for batch processing - both stream and download, with optional thumbnail"""
     try:
         media = get_media_from_message(message)
@@ -122,12 +122,13 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
         
         # Extract and upload thumbnail for video files BEFORE storing in database
         mime_type = getattr(media, 'mime_type', '')
-        thumbnail_url = None
+        thumbnail_url = shared_thumbnail_url  # Use shared thumbnail if provided
         
         # Log thumbnail processing conditions
-        logging.info(f"Thumbnail check - mime_type: {mime_type}, folder_name: {folder_name}, THUMB_API: {'Present' if THUMB_API else 'Missing'}, client: {'Present' if client else 'Missing'}")
+        logging.info(f"Thumbnail check - mime_type: {mime_type}, folder_name: {folder_name}, THUMB_API: {'Present' if THUMB_API else 'Missing'}, client: {'Present' if client else 'Missing'}, shared_thumbnail: {'Present' if shared_thumbnail_url else 'None'}")
         
-        if mime_type and mime_type.startswith('video/') and folder_name and THUMB_API and client:
+        # Only extract thumbnail if we don't have a shared one AND this is a video
+        if not shared_thumbnail_url and mime_type and mime_type.startswith('video/') and folder_name and THUMB_API and client:
             temp_video_path = None
             thumbnail_path = None
             try:
@@ -220,7 +221,7 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
     except Exception as e:
         raise ValueError(f"Failed to create intermediate links: {str(e)}")
 
-async def process_message(msg, json_output, skipped_messages, folder_name=None, client=None):
+async def process_message(msg, json_output, skipped_messages, folder_name=None, client=None, shared_thumbnail_url=None):
     """Process individual message and create intermediate link (updated for new system with thumbnail support)"""
     try:
         # Validate media content
@@ -228,7 +229,8 @@ async def process_message(msg, json_output, skipped_messages, folder_name=None, 
             raise ValueError("No media content found in message")
         
         # Create intermediate link instead of immediate stream generation (with optional thumbnail)
-        intermediate_data = await create_intermediate_link_for_batch(msg, folder_name, client)
+        # Pass shared_thumbnail_url to skip extraction if already have one
+        intermediate_data = await create_intermediate_link_for_batch(msg, folder_name, client, shared_thumbnail_url)
         json_output.append(intermediate_data)
         
     except Exception as e:
@@ -431,6 +433,7 @@ async def batch(client: Client, message: Message):
                 # Process messages in batches
                 batch_size = 50
                 processed_count = 0
+                shared_thumbnail_url = None  # Reset per subject - extract from first video in THIS subject only
                 
                 for batch_start in range(start_id, end_id + 1, batch_size):
                     batch_end = min(batch_start + batch_size - 1, end_id)
@@ -459,7 +462,16 @@ async def batch(client: Client, message: Message):
                         
                         # Use subject name as folder for thumbnail organization
                         thumbnail_folder = subject_name.lower().replace(" ", "_")
-                        await process_message(msg, json_output, skipped_messages, thumbnail_folder, client)
+                        # Pass shared_thumbnail_url so only first video extracts, rest reuse
+                        await process_message(msg, json_output, skipped_messages, thumbnail_folder, client, shared_thumbnail_url)
+                        
+                        # After processing first video, check if we got a thumbnail URL
+                        # If so, reuse it for all subsequent videos in THIS SUBJECT
+                        if not shared_thumbnail_url and json_output:
+                            last_entry = json_output[-1]
+                            if 'thumbnailUrl' in last_entry:
+                                shared_thumbnail_url = last_entry['thumbnailUrl']
+                                logging.info(f"✅ Extracted thumbnail from first video in {subject_name}, will reuse for remaining {total_messages - processed_count} videos in this subject: {shared_thumbnail_url}")
                 
                 # Prepare JSON output in the required format
                 output_data = {
