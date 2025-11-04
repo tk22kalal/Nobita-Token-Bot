@@ -123,11 +123,17 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
         # Extract and upload thumbnail for video files BEFORE storing in database
         mime_type = getattr(media, 'mime_type', '')
         thumbnail_url = None
+        
+        # Log thumbnail processing conditions
+        logging.info(f"Thumbnail check - mime_type: {mime_type}, folder_name: {folder_name}, THUMB_API: {'Present' if THUMB_API else 'Missing'}, client: {'Present' if client else 'Missing'}")
+        
         if mime_type and mime_type.startswith('video/') and folder_name and THUMB_API and client:
             temp_video_path = None
             thumbnail_path = None
             try:
-                logging.info(f"Extracting thumbnail for video: {caption}")
+                logging.info(f"🎬 Starting thumbnail extraction for video: {caption}")
+                logging.info(f"   Video mime type: {mime_type}")
+                logging.info(f"   Folder name: {folder_name}")
                 
                 # Download video temporarily
                 temp_dir = Path("/tmp/batch_videos")
@@ -135,13 +141,22 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
                 import secrets as sec
                 temp_video_path = str(temp_dir / f"video_{sec.token_hex(8)}.mp4")
                 
+                logging.info(f"   Downloading video to: {temp_video_path}")
                 # Download the video file
                 await client.download_media(message, file_name=temp_video_path)
                 
+                video_size = os.path.getsize(temp_video_path) if os.path.exists(temp_video_path) else 0
+                logging.info(f"   Video downloaded successfully ({video_size} bytes)")
+                
                 # Extract thumbnail from middle of video
+                logging.info(f"   Extracting thumbnail from video...")
                 thumbnail_path = await extract_thumbnail_from_middle(temp_video_path)
                 
+                thumb_size = os.path.getsize(thumbnail_path) if os.path.exists(thumbnail_path) else 0
+                logging.info(f"   Thumbnail extracted successfully: {thumbnail_path} ({thumb_size} bytes)")
+                
                 # Upload thumbnail to GitHub
+                logging.info(f"   Uploading thumbnail to GitHub (folder: {folder_name})...")
                 thumbnail_url = await upload_image_to_github(
                     image_path=thumbnail_path,
                     github_token=THUMB_API,
@@ -149,10 +164,12 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
                     title_name=caption
                 )
                 
-                logging.info(f"Thumbnail uploaded successfully: {thumbnail_url}")
+                logging.info(f"✅ Thumbnail uploaded successfully: {thumbnail_url}")
                     
             except Exception as thumb_error:
-                logging.warning(f"Failed to generate/upload thumbnail for {caption}: {thumb_error}")
+                logging.error(f"❌ Failed to generate/upload thumbnail for {caption}")
+                logging.error(f"   Error type: {type(thumb_error).__name__}")
+                logging.error(f"   Error details: {str(thumb_error)}", exc_info=True)
                 # Continue without thumbnail if there's an error
             finally:
                 # Always cleanup temporary files, even on failure
@@ -165,6 +182,19 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
                         logging.debug(f"Cleaned up thumbnail: {thumbnail_path}")
                 except Exception as cleanup_error:
                     logging.error(f"Error cleaning up temp files: {cleanup_error}")
+        else:
+            # Log why thumbnail extraction was skipped
+            reasons = []
+            if not mime_type or not mime_type.startswith('video/'):
+                reasons.append(f"not a video (mime: {mime_type})")
+            if not folder_name:
+                reasons.append("no folder_name provided")
+            if not THUMB_API:
+                reasons.append("THUMB_API not configured")
+            if not client:
+                reasons.append("no client provided")
+            if reasons:
+                logging.info(f"⏭️  Skipping thumbnail for {caption}: {', '.join(reasons)}")
         
         # Add thumbnail URL to message_data if available
         if thumbnail_url:
