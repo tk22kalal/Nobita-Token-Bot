@@ -4,14 +4,14 @@ import secrets
 import logging
 from pathlib import Path
 
-async def extract_video_thumbnail(video_path: str, output_path: str = None, seek_time: str = "00:00:05") -> str:
+async def extract_video_thumbnail(video_path: str, output_path: str = None, seek_time: str = "00:00:01") -> str:
     """
-    Extract a thumbnail from a video file using ffmpeg.
+    Extract a thumbnail from a video file using ffmpeg (FAST mode for batch processing).
     
     Args:
         video_path: Path to the video file
         output_path: Path where to save the thumbnail (optional, will auto-generate if not provided)
-        seek_time: Time position to extract thumbnail from (default: 5 seconds, or middle if video is longer)
+        seek_time: Time position to extract thumbnail from (default: 1 second for speed)
     
     Returns:
         Path to the extracted thumbnail
@@ -29,13 +29,19 @@ async def extract_video_thumbnail(video_path: str, output_path: str = None, seek
         output_dir = Path(output_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
         
+        # Ultra-fast thumbnail extraction optimized for batch processing
+        # -ss before -i: faster seeking
+        # -vf scale: reduce to 320 width for speed (maintains aspect ratio)
+        # -q:v 10: lower quality = faster processing (1-31 scale, 10 is good balance)
+        # -frames:v 1: extract only 1 frame
         cmd = [
             "ffmpeg",
-            "-ss", seek_time,
-            "-i", video_path,
-            "-frames:v", "1",
-            "-q:v", "2",
-            "-y",
+            "-ss", seek_time,          # Seek to position BEFORE input (faster)
+            "-i", video_path,           # Input video
+            "-vf", "scale=320:-1",      # Resize to width 320, maintain aspect ratio
+            "-frames:v", "1",           # Extract only 1 frame
+            "-q:v", "10",               # Lower quality for speed (1=best, 31=worst)
+            "-y",                       # Overwrite output
             output_path
         ]
         
@@ -102,7 +108,13 @@ async def get_video_duration(video_path: str) -> float:
 
 async def extract_thumbnail_from_middle(video_path: str, output_path: str = None) -> str:
     """
-    Extract a thumbnail from the middle of a video file.
+    Extract a thumbnail from a video file (FAST mode - from beginning for speed).
+    
+    Optimized for batch processing of 1000+ files:
+    - Extracts from 2 seconds in (skips black intro frames)
+    - No duration calculation (saves time)
+    - Low resolution (320px width)
+    - Lower quality for faster processing
     
     Args:
         video_path: Path to the video file
@@ -112,16 +124,11 @@ async def extract_thumbnail_from_middle(video_path: str, output_path: str = None
         Path to the extracted thumbnail
     """
     try:
-        duration = await get_video_duration(video_path)
-        
-        if duration > 0:
-            middle_time = duration / 2
-            seek_time = f"{int(middle_time // 3600):02d}:{int((middle_time % 3600) // 60):02d}:{int(middle_time % 60):02d}"
-        else:
-            seek_time = "00:00:05"
-        
-        return await extract_video_thumbnail(video_path, output_path, seek_time)
+        # For speed, extract from beginning (2 seconds in to skip potential black frames)
+        # No duration check needed - saves significant time for large batches
+        return await extract_video_thumbnail(video_path, output_path, "00:00:02")
         
     except Exception as e:
-        logging.error(f"Error extracting thumbnail from middle: {e}")
-        return await extract_video_thumbnail(video_path, output_path, "00:00:05")
+        logging.error(f"Error extracting thumbnail: {e}")
+        # Fallback to 1 second if 2 seconds fails
+        return await extract_video_thumbnail(video_path, output_path, "00:00:01")
