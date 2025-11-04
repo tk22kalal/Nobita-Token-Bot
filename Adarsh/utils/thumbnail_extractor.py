@@ -4,14 +4,14 @@ import secrets
 import logging
 from pathlib import Path
 
-async def extract_video_thumbnail(video_path: str, output_path: str = None, seek_time: str = "00:00:01") -> str:
+async def extract_video_thumbnail(video_path: str, output_path: str = None, seek_time: str = "00:00:10") -> str:
     """
-    Extract a thumbnail from a video file using ffmpeg (FAST mode for batch processing).
+    Extract a thumbnail from a video file using ffmpeg (HIGH QUALITY mode).
     
     Args:
         video_path: Path to the video file
         output_path: Path where to save the thumbnail (optional, will auto-generate if not provided)
-        seek_time: Time position to extract thumbnail from (default: 1 second for speed)
+        seek_time: Time position to extract thumbnail from (default: 10 seconds)
     
     Returns:
         Path to the extracted thumbnail
@@ -29,18 +29,18 @@ async def extract_video_thumbnail(video_path: str, output_path: str = None, seek
         output_dir = Path(output_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Ultra-fast thumbnail extraction optimized for batch processing
+        # High quality thumbnail extraction at 10 seconds
         # -ss before -i: faster seeking
-        # -vf scale: reduce to 320 width for speed (maintains aspect ratio)
-        # -q:v 10: lower quality = faster processing (1-31 scale, 10 is good balance)
+        # -vf scale: 1280 width for better quality (maintains aspect ratio)
+        # -q:v 2: high quality (1=best, 31=worst, 2 is excellent quality)
         # -frames:v 1: extract only 1 frame
         cmd = [
             "ffmpeg",
             "-ss", seek_time,          # Seek to position BEFORE input (faster)
             "-i", video_path,           # Input video
-            "-vf", "scale=320:-1",      # Resize to width 320, maintain aspect ratio
+            "-vf", "scale=1280:-1",     # Resize to width 1280 for better quality, maintain aspect ratio
             "-frames:v", "1",           # Extract only 1 frame
-            "-q:v", "10",               # Lower quality for speed (1=best, 31=worst)
+            "-q:v", "2",                # High quality (1=best, 31=worst)
             "-y",                       # Overwrite output
             output_path
         ]
@@ -108,13 +108,13 @@ async def get_video_duration(video_path: str) -> float:
 
 async def extract_thumbnail_from_middle(video_path: str, output_path: str = None) -> str:
     """
-    Extract a thumbnail from a video file (FAST mode - from beginning for speed).
+    Extract a thumbnail from a video file at 10 seconds with high quality.
     
-    Optimized for batch processing of 1000+ files:
-    - Extracts from 2 seconds in (skips black intro frames)
+    Improved for batch processing:
+    - Extracts from 10 seconds in (better frame than start)
+    - High resolution (1280px width)
+    - High quality (q:v 2)
     - No duration calculation (saves time)
-    - Low resolution (320px width)
-    - Lower quality for faster processing
     
     Args:
         video_path: Path to the video file
@@ -124,11 +124,14 @@ async def extract_thumbnail_from_middle(video_path: str, output_path: str = None
         Path to the extracted thumbnail
     """
     try:
-        # For speed, extract from beginning (2 seconds in to skip potential black frames)
-        # No duration check needed - saves significant time for large batches
-        return await extract_video_thumbnail(video_path, output_path, "00:00:02")
+        # Extract from 10 seconds for better frame quality
+        return await extract_video_thumbnail(video_path, output_path, "00:00:10")
         
     except Exception as e:
-        logging.error(f"Error extracting thumbnail: {e}")
-        # Fallback to 1 second if 2 seconds fails
-        return await extract_video_thumbnail(video_path, output_path, "00:00:01")
+        logging.error(f"Error extracting thumbnail at 10s: {e}")
+        # Fallback to 2 seconds if 10 seconds fails (video might be shorter)
+        try:
+            return await extract_video_thumbnail(video_path, output_path, "00:00:02")
+        except:
+            # Final fallback to 1 second
+            return await extract_video_thumbnail(video_path, output_path, "00:00:01")
