@@ -2,6 +2,8 @@ import re
 import os
 import asyncio
 import json
+import logging
+from pathlib import Path
 from Adarsh.bot import StreamBot
 from Adarsh.utils.database import Database
 from Adarsh.utils.human_readable import humanbytes
@@ -13,12 +15,15 @@ from pyrogram.errors import FloodWait
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from Adarsh.utils.file_properties import get_name, get_hash, get_media_from_message
 from helper_func import encode, get_message_id, decode, get_messages
+from Adarsh.utils.thumbnail_extractor import extract_thumbnail_from_middle
+from Adarsh.utils.github_uploader import upload_image_to_github
 
 db = Database(Var.DATABASE_URL, Var.name)
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
 PROTECT_CONTENT = os.environ.get('PROTECT_CONTENT', "False") == "True"
 DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True'
 GIT_TOKEN = os.environ.get('GIT_TOKEN', '')
+THUMB_API = os.environ.get('THUMB_API', '')
 
 def sanitize_caption(text: str) -> str:
     """Sanitize caption by removing HTML tags, links, @mentions, and hashtags"""
@@ -80,8 +85,8 @@ async def create_intermediate_link(message: Message):
     
     return intermediate_link, caption
 
-async def create_intermediate_link_for_batch(message: Message):
-    """Create intermediate links for batch processing - both stream and download"""
+async def create_intermediate_link_for_batch(message: Message, folder_name: str = None, client: Client = None):
+    """Create intermediate links for batch processing - both stream and download, with optional thumbnail"""
     try:
         media = get_media_from_message(message)
         if not media:
@@ -120,23 +125,71 @@ async def create_intermediate_link_for_batch(message: Message):
         stream_link = f"{Var.URL}prepare/{token}?type=stream"
         download_link = f"{Var.URL}prepare/{token}?type=download"
         
-        return {
+        result = {
             "title": caption,
             "streamingUrl": stream_link,
             "downloadUrl": download_link
         }
+        
+        # Extract and upload thumbnail for video files
+        mime_type = getattr(media, 'mime_type', '')
+        if mime_type and mime_type.startswith('video/') and folder_name and THUMB_API and client:
+            temp_video_path = None
+            thumbnail_path = None
+            try:
+                logging.info(f"Extracting thumbnail for video: {caption}")
+                
+                # Download video temporarily
+                temp_dir = Path("/tmp/batch_videos")
+                temp_dir.mkdir(exist_ok=True)
+                import secrets as sec
+                temp_video_path = str(temp_dir / f"video_{sec.token_hex(8)}.mp4")
+                
+                # Download the video file
+                await client.download_media(message, file_name=temp_video_path)
+                
+                # Extract thumbnail from middle of video
+                thumbnail_path = await extract_thumbnail_from_middle(temp_video_path)
+                
+                # Upload thumbnail to GitHub
+                thumbnail_url = await upload_image_to_github(
+                    image_path=thumbnail_path,
+                    github_token=THUMB_API,
+                    folder_name=folder_name,
+                    title_name=caption
+                )
+                
+                result["thumbnailUrl"] = thumbnail_url
+                logging.info(f"Thumbnail uploaded successfully: {thumbnail_url}")
+                    
+            except Exception as thumb_error:
+                logging.warning(f"Failed to generate/upload thumbnail for {caption}: {thumb_error}")
+                # Continue without thumbnail if there's an error
+            finally:
+                # Always cleanup temporary files, even on failure
+                try:
+                    if temp_video_path and os.path.exists(temp_video_path):
+                        os.remove(temp_video_path)
+                        logging.debug(f"Cleaned up temp video: {temp_video_path}")
+                    if thumbnail_path and os.path.exists(thumbnail_path):
+                        os.remove(thumbnail_path)
+                        logging.debug(f"Cleaned up thumbnail: {thumbnail_path}")
+                except Exception as cleanup_error:
+                    logging.error(f"Error cleaning up temp files: {cleanup_error}")
+        
+        return result
     except Exception as e:
         raise ValueError(f"Failed to create intermediate links: {str(e)}")
 
-async def process_message(msg, json_output, skipped_messages):
-    """Process individual message and create intermediate link (updated for new system)"""
+async def process_message(msg, json_output, skipped_messages, folder_name=None, client=None):
+    """Process individual message and create intermediate link (updated for new system with thumbnail support)"""
     try:
         # Validate media content
         if not (msg.document or msg.video or msg.audio):
             raise ValueError("No media content found in message")
         
-        # Create intermediate link instead of immediate stream generation
-        intermediate_data = await create_intermediate_link_for_batch(msg)
+        # Create intermediate link instead of immediate stream generation (with optional thumbnail)
+        intermediate_data = await create_intermediate_link_for_batch(msg, folder_name, client)
         json_output.append(intermediate_data)
         
     except Exception as e:
@@ -365,7 +418,7 @@ async def batch(client: Client, message: Message):
                             })
                             continue
                             
-                        await process_message(msg, json_output, skipped_messages)
+                        await process_message(msg, json_output, skipped_messages, github_dest_folder, client)
                 
                 # Prepare JSON output in the required format
                 output_data = {
