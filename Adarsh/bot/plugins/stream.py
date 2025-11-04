@@ -110,7 +110,6 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
             import secrets
             caption = f"file_{secrets.token_hex(4)}"
         
-        # Initialize message_data with basic info
         message_data = {
             'message_id': message.id,
             'file_name': getattr(media, 'file_name', None) or get_name(message),
@@ -151,10 +150,6 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
                 )
                 
                 logging.info(f"Thumbnail uploaded successfully: {thumbnail_url}")
-                
-                # *** FIX: Add thumbnail URL to message_data BEFORE storing ***
-                if thumbnail_url:
-                    message_data['thumbnail_url'] = thumbnail_url
                     
             except Exception as thumb_error:
                 logging.warning(f"Failed to generate/upload thumbnail for {caption}: {thumb_error}")
@@ -171,7 +166,11 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
                 except Exception as cleanup_error:
                     logging.error(f"Error cleaning up temp files: {cleanup_error}")
         
-        # *** FIX: Store in database AFTER thumbnail URL is added to message_data ***
+        # Add thumbnail URL to message_data if available
+        if thumbnail_url:
+            message_data['thumbnail_url'] = thumbnail_url
+        
+        # Now store in database with thumbnail URL included
         token = await db.store_temp_file(message_data)
         
         stream_link = f"{Var.URL}prepare/{token}?type=stream"
@@ -190,7 +189,7 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
         return result
     except Exception as e:
         raise ValueError(f"Failed to create intermediate links: {str(e)}")
-        
+
 async def process_message(msg, json_output, skipped_messages, folder_name=None, client=None):
     """Process individual message and create intermediate link (updated for new system with thumbnail support)"""
     try:
@@ -427,8 +426,10 @@ async def batch(client: Client, message: Message):
                                 "reason": "Message not found"
                             })
                             continue
-                            
-                        await process_message(msg, json_output, skipped_messages, github_dest_folder, client)
+                        
+                        # Use subject name as folder for thumbnail organization
+                        thumbnail_folder = subject_name.lower().replace(" ", "_")
+                        await process_message(msg, json_output, skipped_messages, thumbnail_folder, client)
                 
                 # Prepare JSON output in the required format
                 output_data = {
