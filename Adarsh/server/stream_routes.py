@@ -217,11 +217,18 @@ async def generate_stream_handler(request: web.Request):
         # Keep temporary data for permanent links
         # await db.delete_temp_file(token)  # Commented out to make links permanent
         
-        return web.json_response({
+        # Prepare response with stream URL
+        response_data = {
             "success": True,
             "stream_url": stream_link,
             "file_name": file_name
-        }, content_type='application/json')
+        }
+        
+        # Include thumbnail URL if available
+        if temp_data.get('thumbnail_url'):
+            response_data['thumbnail_url'] = temp_data['thumbnail_url']
+        
+        return web.json_response(response_data, content_type='application/json')
         
     except Exception as e:
         logging.error(f"Error in generate_stream_handler: {e}", exc_info=True)
@@ -320,11 +327,18 @@ async def generate_download_handler(request: web.Request):
         # Keep temporary data for permanent links (don't delete)
         # await db.delete_temp_file(token)  # Commented out to make links permanent
         
-        return web.json_response({
+        # Prepare response with download URL
+        response_data = {
             "success": True,
             "download_url": download_link,
             "file_name": file_name
-        }, content_type='application/json')
+        }
+        
+        # Include thumbnail URL if available
+        if temp_data.get('thumbnail_url'):
+            response_data['thumbnail_url'] = temp_data['thumbnail_url']
+        
+        return web.json_response(response_data, content_type='application/json')
         
     except Exception as e:
         logging.error(f"Error in generate_download_handler: {e}", exc_info=True)
