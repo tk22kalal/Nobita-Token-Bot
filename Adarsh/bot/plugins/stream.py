@@ -120,19 +120,9 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
             'file_unique_id': getattr(media, 'file_unique_id', '')
         }
         
-        token = await db.store_temp_file(message_data)
-        
-        stream_link = f"{Var.URL}prepare/{token}?type=stream"
-        download_link = f"{Var.URL}prepare/{token}?type=download"
-        
-        result = {
-            "title": caption,
-            "streamingUrl": stream_link,
-            "downloadUrl": download_link
-        }
-        
-        # Extract and upload thumbnail for video files
+        # Extract and upload thumbnail for video files BEFORE storing in database
         mime_type = getattr(media, 'mime_type', '')
+        thumbnail_url = None
         if mime_type and mime_type.startswith('video/') and folder_name and THUMB_API and client:
             temp_video_path = None
             thumbnail_path = None
@@ -159,7 +149,6 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
                     title_name=caption
                 )
                 
-                result["thumbnailUrl"] = thumbnail_url
                 logging.info(f"Thumbnail uploaded successfully: {thumbnail_url}")
                     
             except Exception as thumb_error:
@@ -176,6 +165,26 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
                         logging.debug(f"Cleaned up thumbnail: {thumbnail_path}")
                 except Exception as cleanup_error:
                     logging.error(f"Error cleaning up temp files: {cleanup_error}")
+        
+        # Add thumbnail URL to message_data if available
+        if thumbnail_url:
+            message_data['thumbnail_url'] = thumbnail_url
+        
+        # Now store in database with thumbnail URL included
+        token = await db.store_temp_file(message_data)
+        
+        stream_link = f"{Var.URL}prepare/{token}?type=stream"
+        download_link = f"{Var.URL}prepare/{token}?type=download"
+        
+        result = {
+            "title": caption,
+            "streamingUrl": stream_link,
+            "downloadUrl": download_link
+        }
+        
+        # Add thumbnail URL to result if available
+        if thumbnail_url:
+            result["thumbnailUrl"] = thumbnail_url
         
         return result
     except Exception as e:
