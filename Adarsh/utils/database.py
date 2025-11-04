@@ -94,6 +94,7 @@ class Database:
                 'caption': message_data['caption'],
                 'from_chat_id': message_data['from_chat_id'],
                 'file_unique_id': message_data['file_unique_id'],
+                'thumbnail_url': message_data.get('thumbnail_url'),
                 'created_at': time.time()
             }
             self._memory_temp_files[token] = temp_data
@@ -108,6 +109,7 @@ class Database:
             'caption': message_data['caption'],
             'from_chat_id': message_data['from_chat_id'],
             'file_unique_id': message_data['file_unique_id'],
+            'thumbnail_url': message_data.get('thumbnail_url'),
             'created_at': time.time()
         }
         await self.temp_files.insert_one(temp_data)
