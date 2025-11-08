@@ -1,4 +1,4 @@
-<!--(c) NobiDeveloper - Intermediate Page-->
+<!--(c) NobiDeveloper - Enhanced with Download Queue System-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,6 +23,38 @@
             text-align: center;
             max-width: 500px;
             width: 100%;
+        }
+
+        .queue-info {
+            background: #e8f4f8;
+            border: 2px solid #2c5282;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .queue-info.active {
+            display: block;
+        }
+
+        .queue-title {
+            font-weight: bold;
+            color: #2c5282;
+            margin-bottom: 10px;
+        }
+
+        .queue-status {
+            font-size: 14px;
+            color: #333;
+            margin: 5px 0;
+        }
+
+        .queue-position {
+            font-size: 16px;
+            font-weight: 600;
+            color: #d9534f;
+            margin-top: 10px;
         }
 
         .player-buttons {
@@ -124,6 +156,12 @@
             border: 1px solid #f5c6cb;
         }
 
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
         @media (max-width: 480px) {
             .player-btn {
                 width: 140px;
@@ -142,6 +180,13 @@
 
 <body>
     <div class="container">
+        <!-- Queue Status Display -->
+        <div class="queue-info" id="queueInfo">
+            <div class="queue-title">⏳ Download Queue Active</div>
+            <div class="queue-status" id="queueStatus">Processing your request...</div>
+            <div class="queue-position" id="queuePosition"></div>
+        </div>
+
         <div class="player-buttons">
             <button type="button" class="player-btn" id="plyrBtn" onclick="generateStream('plyr')" aria-label="Stream with IOS/PC">
                 IOS/PC
@@ -152,7 +197,7 @@
         </div>
 
         <div>
-            <button type="button" class="download-btn" id="downloadBtn" onclick="generateDownload()" aria-label="Generate download link">
+            <button type="button" class="download-btn" id="downloadBtn" onclick="queueDownload()" aria-label="Generate download link">
                 DOWNLOAD
             </button>
         </div>
@@ -166,9 +211,111 @@
     </div>
 
     <script>
+        // Download Queue Manager using localStorage
+        class DownloadQueueManager {
+            constructor() {
+                this.STORAGE_KEY = 'file_download_queue';
+                this.ACTIVE_KEY = 'active_downloads';
+                this.MAX_CONCURRENT = 1; // Only 1 concurrent download to prevent timeouts
+                this.cleanExpiredEntries();
+            }
+
+            getQueue() {
+                try {
+                    return JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+                } catch {
+                    return [];
+                }
+            }
+
+            setQueue(queue) {
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(queue));
+            }
+
+            getActiveDownloads() {
+                try {
+                    const active = JSON.parse(localStorage.getItem(this.ACTIVE_KEY) || '[]');
+                    // Clean up expired active downloads (older than 5 minutes)
+                    const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+                    const cleaned = active.filter(d => d.timestamp > fiveMinutesAgo);
+                    if (cleaned.length !== active.length) {
+                        this.setActiveDownloads(cleaned);
+                    }
+                    return cleaned;
+                } catch {
+                    return [];
+                }
+            }
+
+            setActiveDownloads(active) {
+                localStorage.setItem(this.ACTIVE_KEY, JSON.stringify(active));
+            }
+
+            addToQueue(downloadItem) {
+                const queue = this.getQueue();
+                queue.push({
+                    ...downloadItem,
+                    id: Date.now() + Math.random(),
+                    timestamp: Date.now()
+                });
+                this.setQueue(queue);
+                return queue.length;
+            }
+
+            removeFromQueue(itemId) {
+                const queue = this.getQueue();
+                const filtered = queue.filter(item => item.id !== itemId);
+                this.setQueue(filtered);
+            }
+
+            markAsActive(itemId) {
+                const active = this.getActiveDownloads();
+                active.push({
+                    id: itemId,
+                    timestamp: Date.now()
+                });
+                this.setActiveDownloads(active);
+            }
+
+            markAsComplete(itemId) {
+                const active = this.getActiveDownloads();
+                const filtered = active.filter(item => item.id !== itemId);
+                this.setActiveDownloads(filtered);
+                this.removeFromQueue(itemId);
+            }
+
+            canStartDownload() {
+                const active = this.getActiveDownloads();
+                return active.length < this.MAX_CONCURRENT;
+            }
+
+            getQueuePosition(itemId) {
+                const queue = this.getQueue();
+                return queue.findIndex(item => item.id === itemId) + 1;
+            }
+
+            cleanExpiredEntries() {
+                // Clean entries older than 10 minutes
+                const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+                const queue = this.getQueue();
+                const cleanedQueue = queue.filter(item => item.timestamp > tenMinutesAgo);
+                this.setQueue(cleanedQueue);
+
+                const active = this.getActiveDownloads();
+                const cleanedActive = active.filter(item => item.timestamp > tenMinutesAgo);
+                this.setActiveDownloads(cleanedActive);
+            }
+
+            getTotalInQueue() {
+                return this.getQueue().length;
+            }
+        }
+
+        const queueManager = new DownloadQueueManager();
+        let currentDownloadId = null;
+
         const urlParams = new URLSearchParams(window.location.search);
         const linkType = urlParams.get('type');
-        const player = urlParams.get('player');
         
         window.addEventListener('DOMContentLoaded', () => {
             const plyrBtn = document.getElementById('plyrBtn');
@@ -176,19 +323,174 @@
             const downloadBtn = document.getElementById('downloadBtn');
             
             if (linkType === 'stream') {
-                // Hide download button for stream links, but let user choose player
                 downloadBtn.style.display = 'none';
-                // Don't auto-generate - let user choose their preferred player
             } else if (linkType === 'download') {
-                // Hide player selection for download links
                 plyrBtn.style.display = 'none';
                 videojsBtn.style.display = 'none';
                 document.querySelector('.player-buttons').style.display = 'none';
-                // Auto-generate download link
-                generateDownload();
+                queueDownload();
             }
+
+            // Process queue every 2 seconds
+            setInterval(processQueue, 2000);
         });
-        
+
+        function updateQueueUI(position, total) {
+            const queueInfo = document.getElementById('queueInfo');
+            const queueStatus = document.getElementById('queueStatus');
+            const queuePosition = document.getElementById('queuePosition');
+
+            if (total > 0) {
+                queueInfo.classList.add('active');
+                queueStatus.textContent = `There are ${total} download(s) in queue`;
+                if (position > 0) {
+                    queuePosition.textContent = `Your position: #${position}`;
+                } else {
+                    queuePosition.textContent = 'Processing...';
+                }
+            } else {
+                queueInfo.classList.remove('active');
+            }
+        }
+
+        async function queueDownload() {
+            if (!queueManager.canStartDownload()) {
+                // Add to queue
+                const downloadItem = {
+                    token: '{{token}}',
+                    type: 'download'
+                };
+                
+                const queueLength = queueManager.addToQueue(downloadItem);
+                currentDownloadId = downloadItem.id;
+                
+                updateQueueUI(queueLength, queueLength);
+                
+                const statusMessage = document.getElementById('statusMessage');
+                statusMessage.className = 'status-message warning';
+                statusMessage.textContent = `⏳ Added to queue. Position: #${queueLength}. Please wait...`;
+                statusMessage.style.display = 'block';
+                
+                // Start processing queue
+                processQueue();
+            } else {
+                // Start immediately
+                const downloadItem = {
+                    token: '{{token}}',
+                    type: 'download',
+                    id: Date.now() + Math.random()
+                };
+                currentDownloadId = downloadItem.id;
+                queueManager.markAsActive(currentDownloadId);
+                await executeDownload();
+            }
+        }
+
+        async function processQueue() {
+            if (queueManager.canStartDownload()) {
+                const queue = queueManager.getQueue();
+                if (queue.length > 0) {
+                    const nextItem = queue[0];
+                    currentDownloadId = nextItem.id;
+                    queueManager.markAsActive(currentDownloadId);
+                    updateQueueUI(0, queue.length - 1);
+                    await executeDownload();
+                }
+            } else {
+                // Update queue UI for waiting items
+                const queue = queueManager.getQueue();
+                if (currentDownloadId) {
+                    const position = queueManager.getQueuePosition(currentDownloadId);
+                    updateQueueUI(position, queue.length);
+                }
+            }
+        }
+
+        async function executeDownload(retryCount = 0) {
+            const buttons = document.querySelectorAll('.player-btn, .download-btn');
+            const loading = document.querySelector('.loading');
+            const statusMessage = document.getElementById('statusMessage');
+            const loadingText = document.getElementById('loadingText');
+            
+            buttons.forEach(btn => btn.disabled = true);
+            loading.style.display = 'block';
+            statusMessage.style.display = 'none';
+            loadingText.textContent = `Generating download link...${retryCount > 0 ? ` (Retry ${retryCount}/5)` : ''}`;
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
+                
+                const response = await fetch('/api/download/{{token}}', {
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Download-ID': currentDownloadId || 'direct'
+                    }
+                });
+                clearTimeout(timeoutId);
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('Server returned non-JSON response. Please try again.');
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusMessage.className = 'status-message success';
+                    statusMessage.textContent = '✅ Download link generated! Starting download...';
+                    statusMessage.style.display = 'block';
+                    
+                    // Complete and remove from queue
+                    if (currentDownloadId) {
+                        queueManager.markAsComplete(currentDownloadId);
+                    }
+                    
+                    window.location.href = data.download_url;
+                    setTimeout(() => {
+                        buttons.forEach(btn => btn.disabled = false);
+                        loading.style.display = 'none';
+                        updateQueueUI(0, 0);
+                    }, 2000);
+                } else {
+                    throw new Error(data.error || 'Failed to generate download link');
+                }
+            } catch (error) {
+                const maxRetries = 5; // Increased retries
+                const retryDelay = Math.min(2000 * Math.pow(1.5, retryCount), 10000); // Exponential backoff up to 10s
+                
+                if (error.name === 'AbortError') {
+                    if (retryCount < maxRetries) {
+                        statusMessage.className = 'status-message warning';
+                        statusMessage.textContent = `⏳ Server busy, retrying in ${Math.round(retryDelay / 1000)}s... (${retryCount + 1}/${maxRetries})`;
+                        statusMessage.style.display = 'block';
+                        setTimeout(() => executeDownload(retryCount + 1), retryDelay);
+                        return;
+                    }
+                    error.message = 'Request timeout after multiple retries. Server is very busy, please try again later.';
+                } else if ((error.message.includes('non-JSON') || error.message.includes('JSON')) && retryCount < maxRetries) {
+                    statusMessage.className = 'status-message warning';
+                    statusMessage.textContent = `⏳ Retrying... (${retryCount + 1}/${maxRetries})`;
+                    statusMessage.style.display = 'block';
+                    setTimeout(() => executeDownload(retryCount + 1), retryDelay);
+                    return;
+                }
+                
+                // Failed - remove from active and show error
+                if (currentDownloadId) {
+                    queueManager.markAsComplete(currentDownloadId);
+                }
+                
+                statusMessage.className = 'status-message error';
+                statusMessage.textContent = '❌ ' + error.message;
+                statusMessage.style.display = 'block';
+                buttons.forEach(btn => btn.disabled = false);
+                loading.style.display = 'none';
+                updateQueueUI(0, 0);
+            }
+        }
+
         async function generateStream(playerType, retryCount = 0) {
             const buttons = document.querySelectorAll('.player-btn, .download-btn');
             const loading = document.querySelector('.loading');
@@ -200,11 +502,11 @@
             statusMessage.style.display = 'none';
             
             const playerName = playerType === 'plyr' ? 'IOS/PC' : 'ANDROID';
-            loadingText.textContent = `Generating ${playerName} stream link...${retryCount > 0 ? ` (Retry ${retryCount}/3)` : ''}`;
+            loadingText.textContent = `Generating ${playerName} stream link...${retryCount > 0 ? ` (Retry ${retryCount}/5)` : ''}`;
             
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000);
+                const timeoutId = setTimeout(() => controller.abort(), 45000);
                 
                 const response = await fetch(`/api/generate/{{token}}?player=${playerType}`, {
                     signal: controller.signal,
@@ -230,14 +532,20 @@
                     throw new Error(data.error || 'Failed to generate stream link');
                 }
             } catch (error) {
+                const maxRetries = 5;
+                const retryDelay = Math.min(2000 * Math.pow(1.5, retryCount), 10000);
+                
                 if (error.name === 'AbortError') {
-                    if (retryCount < 3) {
-                        setTimeout(() => generateStream(playerType, retryCount + 1), 2000);
+                    if (retryCount < maxRetries) {
+                        statusMessage.className = 'status-message warning';
+                        statusMessage.textContent = `⏳ Server busy, retrying in ${Math.round(retryDelay / 1000)}s... (${retryCount + 1}/${maxRetries})`;
+                        statusMessage.style.display = 'block';
+                        setTimeout(() => generateStream(playerType, retryCount + 1), retryDelay);
                         return;
                     }
-                    error.message = 'Request timeout. Server is busy, please try again later.';
-                } else if ((error.message.includes('non-JSON') || error.message.includes('JSON')) && retryCount < 3) {
-                    setTimeout(() => generateStream(playerType, retryCount + 1), 2000);
+                    error.message = 'Request timeout after multiple retries. Server is very busy, please try again later.';
+                } else if ((error.message.includes('non-JSON') || error.message.includes('JSON')) && retryCount < maxRetries) {
+                    setTimeout(() => generateStream(playerType, retryCount + 1), retryDelay);
                     return;
                 }
                 
@@ -249,67 +557,12 @@
             }
         }
 
-        async function generateDownload(retryCount = 0) {
-            const buttons = document.querySelectorAll('.player-btn, .download-btn');
-            const loading = document.querySelector('.loading');
-            const statusMessage = document.getElementById('statusMessage');
-            const loadingText = document.getElementById('loadingText');
-            
-            buttons.forEach(btn => btn.disabled = true);
-            loading.style.display = 'block';
-            statusMessage.style.display = 'none';
-            loadingText.textContent = `Generating download link...${retryCount > 0 ? ` (Retry ${retryCount}/3)` : ''}`;
-            
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000);
-                
-                const response = await fetch('/api/download/{{token}}', {
-                    signal: controller.signal,
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                });
-                clearTimeout(timeoutId);
-                
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    throw new Error('Server returned non-JSON response. Please try again.');
-                }
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    statusMessage.className = 'status-message success';
-                    statusMessage.textContent = '✅ Download link generated! Starting download...';
-                    statusMessage.style.display = 'block';
-                    window.location.href = data.download_url;
-                    setTimeout(() => {
-                        buttons.forEach(btn => btn.disabled = false);
-                        loading.style.display = 'none';
-                    }, 2000);
-                } else {
-                    throw new Error(data.error || 'Failed to generate download link');
-                }
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    if (retryCount < 3) {
-                        setTimeout(() => generateDownload(retryCount + 1), 2000);
-                        return;
-                    }
-                    error.message = 'Request timeout. Server is busy, please try again later.';
-                } else if ((error.message.includes('non-JSON') || error.message.includes('JSON')) && retryCount < 3) {
-                    setTimeout(() => generateDownload(retryCount + 1), 2000);
-                    return;
-                }
-                
-                statusMessage.className = 'status-message error';
-                statusMessage.textContent = '❌ ' + error.message;
-                statusMessage.style.display = 'block';
-                buttons.forEach(btn => btn.disabled = false);
-                loading.style.display = 'none';
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (currentDownloadId) {
+                queueManager.markAsComplete(currentDownloadId);
             }
-        }
+        });
     </script>
 </body>
 </html>
