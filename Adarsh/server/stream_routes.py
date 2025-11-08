@@ -20,6 +20,7 @@ from Adarsh.utils.database import Database
 from Adarsh.utils.file_properties import get_name, get_hash
 from Adarsh.utils.human_readable import humanbytes
 from Adarsh.vars import Var
+from Adarsh.server.rate_limiter import rate_limiter
 
 
 routes = web.RouteTableDef()
@@ -243,6 +244,21 @@ async def generate_stream_handler(request: web.Request):
 async def generate_download_handler(request: web.Request):
     """API endpoint to generate download link by copying to BIN_CHANNEL"""
     try:
+        # Get client IP for rate limiting
+        client_ip = request.headers.get('X-Forwarded-For', request.remote).split(',')[0].strip()
+        
+        # Check rate limit
+        can_proceed, message = rate_limiter.can_proceed(client_ip)
+        if not can_proceed:
+            return web.json_response(
+                {"success": False, "error": message}, 
+                status=429,
+                content_type='application/json'
+            )
+        
+        # Add request to rate limiter
+        rate_limiter.add_request(client_ip)
+        
         token = request.match_info["token"]
         
         # Get file data from database
@@ -338,10 +354,19 @@ async def generate_download_handler(request: web.Request):
         if temp_data.get('thumbnail_url'):
             response_data['thumbnail_url'] = temp_data['thumbnail_url']
         
+        # Remove from rate limiter when done
+        rate_limiter.remove_request(client_ip)
+        
         return web.json_response(response_data, content_type='application/json')
         
     except Exception as e:
         logging.error(f"Error in generate_download_handler: {e}", exc_info=True)
+        # Remove from rate limiter on error
+        try:
+            client_ip = request.headers.get('X-Forwarded-For', request.remote).split(',')[0].strip()
+            rate_limiter.remove_request(client_ip)
+        except:
+            pass
         return web.json_response(
             {"success": False, "error": "Server error. Please try again later."}, 
             status=500,
