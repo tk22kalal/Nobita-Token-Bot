@@ -186,7 +186,9 @@ class ByteStreamer:
         location = await self.get_location(file_id)
 
         try:
-            # Initial request with flood wait handling
+            # Initial request with flood wait and timeout handling
+            retry_count = 0
+            max_retries = 5
             while True:
                 try:
                     r = await media_session.send(
@@ -198,6 +200,24 @@ class ByteStreamer:
                 except FloodWait as e:
                     logging.warning(f"FloodWait: Waiting for {e.value} seconds")
                     await asyncio.sleep(e.value)
+                    continue
+                except TelegramTimeout as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        logging.error(f"Telegram timeout after {max_retries} retries on initial request")
+                        raise
+                    wait_time = min(2 ** retry_count, 10)
+                    logging.warning(f"Telegram timeout on initial request, retry {retry_count}/{max_retries} after {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                    continue
+                except InternalServerError as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        logging.error(f"Telegram internal error after {max_retries} retries on initial request")
+                        raise
+                    wait_time = min(3 ** retry_count, 15)
+                    logging.warning(f"Telegram internal error on initial request, retry {retry_count}/{max_retries} after {wait_time}s")
+                    await asyncio.sleep(wait_time)
                     continue
 
             if isinstance(r, raw.types.upload.File):
@@ -220,7 +240,9 @@ class ByteStreamer:
                     if current_part > part_count:
                         break
 
-                    # Subsequent requests with flood wait handling
+                    # Subsequent requests with flood wait and timeout handling
+                    retry_count = 0
+                    max_retries = 5
                     while True:
                         try:
                             r = await media_session.send(
@@ -233,7 +255,31 @@ class ByteStreamer:
                             logging.warning(f"FloodWait: Waiting for {e.value} seconds")
                             await asyncio.sleep(e.value)
                             continue
+                        except TelegramTimeout as e:
+                            retry_count += 1
+                            if retry_count >= max_retries:
+                                logging.error(f"Telegram timeout after {max_retries} retries")
+                                raise
+                            wait_time = min(2 ** retry_count, 10)
+                            logging.warning(f"Telegram timeout, retry {retry_count}/{max_retries} after {wait_time}s")
+                            await asyncio.sleep(wait_time)
+                            continue
+                        except InternalServerError as e:
+                            retry_count += 1
+                            if retry_count >= max_retries:
+                                logging.error(f"Telegram internal error after {max_retries} retries")
+                                raise
+                            wait_time = min(3 ** retry_count, 15)
+                            logging.warning(f"Telegram internal error, retry {retry_count}/{max_retries} after {wait_time}s")
+                            await asyncio.sleep(wait_time)
+                            continue
 
+        except TelegramTimeout as e:
+            logging.error(f"Telegram timeout error yielding file: {e}")
+            raise
+        except InternalServerError as e:
+            logging.error(f"Telegram internal server error yielding file: {e}")
+            raise
         except (TimeoutError, AttributeError) as e:
             logging.error(f"Error yielding file: {e}")
             pass
