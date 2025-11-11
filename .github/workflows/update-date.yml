@@ -2,8 +2,8 @@ name: Daily Date Updater
 
 on:
   schedule:
-    - cron: "0 3 * * *"  # Runs every day at 3:00 AM UTC
-  workflow_dispatch:      # Allows manual trigger
+    - cron: "30 21 * * *"  # Runs at 9:30 PM UTC = 3:00 AM IST (UTC+5:30)
+  workflow_dispatch:        # Allows manual trigger
 
 jobs:
   update-date:
@@ -16,6 +16,14 @@ jobs:
           ref: main
           token: ${{ secrets.GH_PAT }}
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install pytz
+
       - name: Set up Git
         run: |
           git config user.name "github-actions[bot]"
@@ -25,13 +33,16 @@ jobs:
       - name: Pull latest changes from remote
         run: git pull origin main --rebase
 
-      - name: Update date in file
-        run: |
-          NOW=$(date +'%Y-%m-%d %H:%M:%S')
-          echo "Last updated: $NOW" > date.txt   # Overwrite with date + time
+      - name: Update date using Python script
+        run: python update_date.py --once
 
       - name: Commit and push changes
         run: |
           git add date.txt
-          git commit -m "Update date to $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
-          git push origin main
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            IST_TIME=$(TZ='Asia/Kolkata' date +'%Y-%m-%d %H:%M:%S IST')
+            git commit -m "Update date: $IST_TIME"
+            git push origin main
+          fi
