@@ -390,18 +390,7 @@ async def watch_handler(request: web.Request):
             secure_hash = request.rel_url.query.get("hash")
         # Get player choice from query parameter (None allows fallback to env var)
         player = request.rel_url.query.get("player")
-        
-        # Build base_url from current request to use correct domain
-        forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
-        if forwarded_proto in ('https', 'http'):
-            scheme = forwarded_proto
-        elif Var.HAS_SSL:
-            scheme = 'https'
-        else:
-            scheme = request.scheme if request.scheme else 'http'
-        base_url = f"{scheme}://{request.host}/"
-        
-        return web.Response(text=await render_page(id, secure_hash, player=player, base_url=base_url), content_type='text/html')
+        return web.Response(text=await render_page(id, secure_hash, player=player), content_type='text/html')
     except InvalidHash as e:
         raise web.HTTPForbidden(text=e.message)
     except FIleNotFound as e:
