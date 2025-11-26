@@ -10,7 +10,7 @@ from Adarsh.utils.human_readable import humanbytes
 from Adarsh.utils.file_properties import get_file_ids
 from Adarsh.server.exceptions import InvalidHash
 
-async def render_page(id, secure_hash, src=None, player=None):
+async def render_page(id, secure_hash, src=None, player=None, base_url=None):
     file_data = await get_file_ids(StreamBot, int(Var.BIN_CHANNEL), int(id))
     if file_data.unique_id[:6] != secure_hash:
         logging.debug(f"link hash: {secure_hash} - {file_data.unique_id[:6]}")
@@ -22,8 +22,10 @@ async def render_page(id, secure_hash, src=None, player=None):
         file_name = file_name.decode('utf-8', errors='ignore')
     file_name = str(file_name)
     
+    # Use provided base_url or fall back to Var.URL_STREAM
+    url_base = base_url if base_url else Var.URL_STREAM
     src = urllib.parse.urljoin(
-        Var.URL,
+        url_base,
         f"{id}/{urllib.parse.quote_plus(file_name)}?hash={secure_hash}",
     )
 
