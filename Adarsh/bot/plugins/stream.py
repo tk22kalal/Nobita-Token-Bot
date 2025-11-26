@@ -204,13 +204,17 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
         # Now store in database with thumbnail URL included
         token = await db.store_temp_file(message_data)
         
-        stream_link = f"{Var.URL}prepare/{token}?type=stream"
-        download_link = f"{Var.URL}prepare/{token}?type=download"
+        stream_link = f"{Var.URL_STREAM}prepare/{token}?type=stream"
+        stream_link_x = f"{Var.URL_STREAM_X}prepare/{token}?type=stream"
+        download_link = f"{Var.URL_STREAM}prepare/{token}?type=download"
+        download_link_x = f"{Var.URL_STREAM_X}prepare/{token}?type=download"
         
         result = {
             "title": caption,
             "streamingUrl": stream_link,
-            "downloadUrl": download_link
+            "streamingUrlx": stream_link_x,
+            "downloadUrl": download_link,
+            "downloadUrlx": download_link_x
         }
         
         # Add thumbnail URL to result if available
