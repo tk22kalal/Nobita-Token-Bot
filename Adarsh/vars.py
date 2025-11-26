@@ -44,6 +44,11 @@ class Var(object):
     BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split()))
     RECAPTCHA_SITE_KEY = str(getenv('RECAPTCHA_SITE_KEY', '6LdCK_crAAAAAD702QCUelFDiZPr5wqL-3qbgk2u'))
     RECAPTCHA_SECRET_KEY = str(getenv('RECAPTCHA_SECRET_KEY', '6LdCK_crAAAAAMiFPR9Pk5u3Zvnj6G8rNEORAsEV'))
+    STREAM_DOMAIN = str(getenv('STREAM_DOMAIN', 'web.afrahtafreeh.site'))
+    STREAM_DOMAIN_X = str(getenv('STREAM_DOMAIN_X', 'webx.afrahtafreeh.site'))
+    
+    URL_STREAM = f"https://{STREAM_DOMAIN}/"
+    URL_STREAM_X = f"https://{STREAM_DOMAIN_X}/"
 
     @classmethod
     def get_url_for_file(cls, file_id: str) -> str:
