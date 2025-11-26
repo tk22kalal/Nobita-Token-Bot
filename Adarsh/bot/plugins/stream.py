@@ -80,8 +80,8 @@ async def create_intermediate_link(message: Message):
     # Store in database and get token
     token = await db.store_temp_file(message_data)
     
-    # Create intermediate link
-    intermediate_link = f"{Var.URL}prepare/{token}"
+    # Create intermediate link using the primary stream domain
+    intermediate_link = f"{Var.URL_STREAM}prepare/{token}"
     
     return intermediate_link, caption
 
