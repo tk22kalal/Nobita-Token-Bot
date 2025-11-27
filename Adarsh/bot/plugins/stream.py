@@ -42,7 +42,8 @@ def sanitize_caption(text: str) -> str:
     return text
 
 async def create_intermediate_link(message: Message):
-    """Create intermediate link for the message and store data temporarily"""
+    """Create intermediate link for the message and store data temporarily.
+    Uses the current domain's BASE_URL for complete domain independence."""
     # Extract file information
     media = get_media_from_message(message)
     if not media:
@@ -77,14 +78,22 @@ async def create_intermediate_link(message: Message):
         'file_unique_id': getattr(media, 'file_unique_id', '')
     }
     
-    token = await db.store_temp_file(message_data)
+    # Store with current domain for domain independence
+    current_domain = Var.get_current_domain()
+    token = await db.store_temp_file(message_data, domain=current_domain)
     
-    intermediate_link = f"{Var.URL_WEB}prepare/{token}"
+    # Use the current instance's BASE_URL (not hardcoded URL_WEB)
+    base_url = Var.get_base_url()
+    intermediate_link = f"{base_url}prepare/{token}"
     
     return intermediate_link, caption
 
 async def create_intermediate_link_for_batch(message: Message, folder_name: str = None, client: Client = None, shared_thumbnail_url: str = None):
-    """Create intermediate links for batch processing - both stream and download, with optional thumbnail"""
+    """Create intermediate links for batch processing - both stream and download, with optional thumbnail.
+    
+    DOMAIN INDEPENDENCE: Each deployment generates links ONLY for its own domain.
+    Set SERVE_DOMAIN='web' or SERVE_DOMAIN='webx' on each Heroku instance.
+    If DUAL_DOMAIN_ENABLED=True and no SERVE_DOMAIN set, generates for both (legacy mode)."""
     try:
         media = get_media_from_message(message)
         if not media:
@@ -198,21 +207,39 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
         if thumbnail_url:
             message_data['thumbnail_url'] = thumbnail_url
         
-        token_web = await db.store_temp_file(message_data, domain='web')
-        token_webx = await db.store_temp_file(message_data, domain='webx')
+        # DOMAIN INDEPENDENCE: Get current domain and base URL
+        current_domain = Var.get_current_domain()
+        base_url = Var.get_base_url()
         
-        stream_link = f"{Var.URL_WEB}prepare/{token_web}?type=stream"
-        stream_link_x = f"{Var.URL_WEBX}prepare/{token_webx}?type=stream"
-        download_link = f"{Var.URL_WEB}prepare/{token_web}?type=download"
-        download_link_x = f"{Var.URL_WEBX}prepare/{token_webx}?type=download"
-        
-        result = {
-            "title": caption,
-            "streamingUrl": stream_link,
-            "streamingUrlx": stream_link_x,
-            "downloadUrl": download_link,
-            "downloadUrlx": download_link_x
-        }
+        # If SERVE_DOMAIN is set (web or webx), only create token for THIS domain
+        # This ensures complete independence - each Heroku app handles its own domain
+        if current_domain:
+            token = await db.store_temp_file(message_data, domain=current_domain)
+            stream_link = f"{base_url}prepare/{token}?type=stream"
+            download_link = f"{base_url}prepare/{token}?type=download"
+            
+            result = {
+                "title": caption,
+                "streamingUrl": stream_link,
+                "downloadUrl": download_link
+            }
+        else:
+            # Legacy mode: if no SERVE_DOMAIN set, create tokens for both (backwards compatible)
+            token_web = await db.store_temp_file(message_data, domain='web')
+            token_webx = await db.store_temp_file(message_data, domain='webx')
+            
+            stream_link = f"{Var.URL_WEB}prepare/{token_web}?type=stream"
+            stream_link_x = f"{Var.URL_WEBX}prepare/{token_webx}?type=stream"
+            download_link = f"{Var.URL_WEB}prepare/{token_web}?type=download"
+            download_link_x = f"{Var.URL_WEBX}prepare/{token_webx}?type=download"
+            
+            result = {
+                "title": caption,
+                "streamingUrl": stream_link,
+                "streamingUrlx": stream_link_x,
+                "downloadUrl": download_link,
+                "downloadUrlx": download_link_x
+            }
         
         if thumbnail_url:
             result["thumbnailUrl"] = thumbnail_url
