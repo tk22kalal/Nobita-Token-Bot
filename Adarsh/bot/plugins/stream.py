@@ -198,12 +198,13 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
         if thumbnail_url:
             message_data['thumbnail_url'] = thumbnail_url
         
-        token = await db.store_temp_file(message_data)
+        token_web = await db.store_temp_file(message_data, domain='web')
+        token_webx = await db.store_temp_file(message_data, domain='webx')
         
-        stream_link = f"{Var.URL_WEB}prepare/{token}?type=stream"
-        stream_link_x = f"{Var.URL_WEBX}prepare/{token}?type=stream"
-        download_link = f"{Var.URL_WEB}prepare/{token}?type=download"
-        download_link_x = f"{Var.URL_WEBX}prepare/{token}?type=download"
+        stream_link = f"{Var.URL_WEB}prepare/{token_web}?type=stream"
+        stream_link_x = f"{Var.URL_WEBX}prepare/{token_webx}?type=stream"
+        download_link = f"{Var.URL_WEB}prepare/{token_web}?type=download"
+        download_link_x = f"{Var.URL_WEBX}prepare/{token_webx}?type=download"
         
         result = {
             "title": caption,
