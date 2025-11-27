@@ -77,11 +77,9 @@ async def create_intermediate_link(message: Message):
         'file_unique_id': getattr(media, 'file_unique_id', '')
     }
     
-    # Store in database and get token
     token = await db.store_temp_file(message_data)
     
-    # Create intermediate link
-    intermediate_link = f"{Var.URL}prepare/{token}"
+    intermediate_link = f"{Var.URL_WEB}prepare/{token}"
     
     return intermediate_link, caption
 
@@ -197,23 +195,24 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
             if reasons:
                 logging.info(f"⏭️  Skipping thumbnail for {caption}: {', '.join(reasons)}")
         
-        # Add thumbnail URL to message_data if available
         if thumbnail_url:
             message_data['thumbnail_url'] = thumbnail_url
         
-        # Now store in database with thumbnail URL included
         token = await db.store_temp_file(message_data)
         
-        stream_link = f"{Var.URL}prepare/{token}?type=stream"
-        download_link = f"{Var.URL}prepare/{token}?type=download"
+        stream_link = f"{Var.URL_WEB}prepare/{token}?type=stream"
+        stream_link_x = f"{Var.URL_WEBX}prepare/{token}?type=stream"
+        download_link = f"{Var.URL_WEB}prepare/{token}?type=download"
+        download_link_x = f"{Var.URL_WEBX}prepare/{token}?type=download"
         
         result = {
             "title": caption,
             "streamingUrl": stream_link,
-            "downloadUrl": download_link
+            "streamingUrlx": stream_link_x,
+            "downloadUrl": download_link,
+            "downloadUrlx": download_link_x
         }
         
-        # Add thumbnail URL to result if available
         if thumbnail_url:
             result["thumbnailUrl"] = thumbnail_url
         
