@@ -39,6 +39,17 @@ class Var(object):
         URL = "https://{}/".format(FQDN)
     else:
         URL = "http://{}/".format(FQDN)
+    DUAL_DOMAIN_WEB = str(getenv('DUAL_DOMAIN_WEB', 'web.afrahtafreeh.site'))
+    DUAL_DOMAIN_WEBX = str(getenv('DUAL_DOMAIN_WEBX', 'webx.afrahtafreeh.site'))
+    DUAL_DOMAIN_ENABLED = os.environ.get('DUAL_DOMAIN_ENABLED', 'True') == 'True'
+    
+    if HAS_SSL:
+        URL_WEB = "https://{}/".format(DUAL_DOMAIN_WEB)
+        URL_WEBX = "https://{}/".format(DUAL_DOMAIN_WEBX)
+    else:
+        URL_WEB = "http://{}/".format(DUAL_DOMAIN_WEB)
+        URL_WEBX = "http://{}/".format(DUAL_DOMAIN_WEBX)
+    
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
     BANNED_CHANNELS = list(set(int(x) for x in str(getenv("BANNED_CHANNELS", "")).split()))
@@ -52,10 +63,16 @@ class Var(object):
         return f"{protocol}://{cls.FQDN}/"
 
     @classmethod
+    def get_dual_urls(cls):
+        """Return both domain URLs for dual domain setup."""
+        return {
+            'web': cls.URL_WEB,
+            'webx': cls.URL_WEBX
+        }
+
+    @classmethod
     def reset_batch(cls):
-        # Not needed now, but keeping it in case of legacy code
         pass
 
 
-# Instantiate the config object
 Var = Var()
