@@ -33,7 +33,7 @@ class Var(object):
     else:
         ON_HEROKU = False
 
-        DUAL_DOMAIN_WEB = str(getenv('DUAL_DOMAIN_WEB', 'web.afrahtafreeh.site'))
+    DUAL_DOMAIN_WEB = str(getenv('DUAL_DOMAIN_WEB', 'web.afrahtafreeh.site'))
     DUAL_DOMAIN_WEBX = str(getenv('DUAL_DOMAIN_WEBX', 'webx.afrahtafreeh.site'))
     DUAL_DOMAIN_ENABLED = os.environ.get('DUAL_DOMAIN_ENABLED', 'True') == 'True'
     SERVE_DOMAIN = str(getenv('SERVE_DOMAIN', '')).lower().strip()
