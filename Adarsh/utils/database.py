@@ -78,15 +78,19 @@ class Database:
             return
         await self.col.delete_many({'id': int(user_id)})
 
-    # Permanent file storage for intermediate page system
-    async def store_temp_file(self, message_data):
-        """Store permanent file data and return a unique token"""
+    async def store_temp_file(self, message_data, domain=None):
+        """Store permanent file data and return a unique token.
+        
+        Args:
+            message_data: Dict with file metadata
+            domain: Optional domain identifier ('web' or 'webx') for independent token storage
+        """
         token = secrets.token_urlsafe(16)
         
         if not self.enabled:
-            # Store in memory for testing
             temp_data = {
                 'token': token,
+                'domain': domain,
                 'message_id': message_data['message_id'],
                 'file_name': message_data['file_name'], 
                 'file_size': message_data['file_size'],
@@ -99,9 +103,10 @@ class Database:
             }
             self._memory_temp_files[token] = temp_data
             return token
-        # Database enabled - use MongoDB
+        
         temp_data = {
             'token': token,
+            'domain': domain,
             'message_id': message_data['message_id'],
             'file_name': message_data['file_name'], 
             'file_size': message_data['file_size'],
@@ -115,14 +120,23 @@ class Database:
         await self.temp_files.insert_one(temp_data)
         return token
 
-    async def get_temp_file(self, token):
-        """Retrieve permanent file data by token"""
+    async def get_temp_file(self, token, serve_domain=None):
+        """Retrieve permanent file data by token.
+        
+        Args:
+            token: The unique token to look up
+            serve_domain: Optional domain filter - if set, only returns tokens for that domain
+        """
         if not self.enabled:
-            # Get from memory storage (no expiration check - permanent links)
-            return self._memory_temp_files.get(token)
-            
-        # Get from database (no expiration check - permanent links)
-        temp_data = await self.temp_files.find_one({'token': token})
+            data = self._memory_temp_files.get(token)
+            if data and serve_domain and data.get('domain') and data['domain'] != serve_domain:
+                return None
+            return data
+        
+        query = {'token': token}
+        if serve_domain:
+            query['domain'] = serve_domain
+        temp_data = await self.temp_files.find_one(query)
         return temp_data
 
     async def delete_temp_file(self, token):
