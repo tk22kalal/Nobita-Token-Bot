@@ -23,7 +23,7 @@ async def render_page(id, secure_hash, src=None, player=None):
     file_name = str(file_name)
     
     src = urllib.parse.urljoin(
-        Var.URL,
+        Var.URL_WEB,
         f"{id}/{urllib.parse.quote_plus(file_name)}?hash={secure_hash}",
     )
 
