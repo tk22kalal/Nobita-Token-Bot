@@ -22,8 +22,9 @@ async def render_page(id, secure_hash, src=None, player=None):
         file_name = file_name.decode('utf-8', errors='ignore')
     file_name = str(file_name)
     
+    # Use get_base_url() for domain independence - each instance uses its own domain
     src = urllib.parse.urljoin(
-        Var.URL_WEB,
+        Var.get_base_url(),
         f"{id}/{urllib.parse.quote_plus(file_name)}?hash={secure_hash}",
     )
 
