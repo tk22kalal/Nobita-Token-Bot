@@ -33,23 +33,61 @@ class Var(object):
     else:
         ON_HEROKU = False
 
-    FQDN = str(getenv('FQDN', BIND_ADDRESS)) if not ON_HEROKU or getenv('FQDN') else APP_NAME + '.herokuapp.com'
-    HAS_SSL = bool(getenv('HAS_SSL', True))
-    if HAS_SSL:
-        URL = "https://{}/".format(FQDN)
-    else:
-        URL = "http://{}/".format(FQDN)
-    DUAL_DOMAIN_WEB = str(getenv('DUAL_DOMAIN_WEB', 'web.afrahtafreeh.site'))
+        DUAL_DOMAIN_WEB = str(getenv('DUAL_DOMAIN_WEB', 'web.afrahtafreeh.site'))
     DUAL_DOMAIN_WEBX = str(getenv('DUAL_DOMAIN_WEBX', 'webx.afrahtafreeh.site'))
     DUAL_DOMAIN_ENABLED = os.environ.get('DUAL_DOMAIN_ENABLED', 'True') == 'True'
     SERVE_DOMAIN = str(getenv('SERVE_DOMAIN', '')).lower().strip()
+    HAS_SSL = bool(getenv('HAS_SSL', True))
+    
+    # FQDN is now domain-specific based on SERVE_DOMAIN for complete independence
+    # Each Heroku app should set SERVE_DOMAIN to 'web' or 'webx'
+    _base_fqdn = str(getenv('FQDN', BIND_ADDRESS)) if not ('DYNO' in environ) or getenv('FQDN') else (getenv('APP_NAME', '') + '.herokuapp.com' if getenv('APP_NAME') else BIND_ADDRESS)
+    
+    # Override FQDN based on SERVE_DOMAIN for domain independence
+    if SERVE_DOMAIN == 'web':
+        FQDN = DUAL_DOMAIN_WEB
+    elif SERVE_DOMAIN == 'webx':
+        FQDN = DUAL_DOMAIN_WEBX
+    else:
+        FQDN = _base_fqdn
     
     if HAS_SSL:
+        URL = "https://{}/".format(FQDN)
         URL_WEB = "https://{}/".format(DUAL_DOMAIN_WEB)
         URL_WEBX = "https://{}/".format(DUAL_DOMAIN_WEBX)
     else:
+        URL = "http://{}/".format(FQDN)
         URL_WEB = "http://{}/".format(DUAL_DOMAIN_WEB)
         URL_WEBX = "http://{}/".format(DUAL_DOMAIN_WEBX)
+    
+    @classmethod
+    def get_fqdn(cls):
+        """Get the FQDN for THIS instance based on SERVE_DOMAIN.
+        Returns domain-specific FQDN for complete independence."""
+        if cls.SERVE_DOMAIN == 'web':
+            return cls.DUAL_DOMAIN_WEB
+        elif cls.SERVE_DOMAIN == 'webx':
+            return cls.DUAL_DOMAIN_WEBX
+        else:
+            return cls.FQDN
+    
+    @classmethod
+    def get_base_url(cls):
+        """Get the base URL for THIS instance based on SERVE_DOMAIN.
+        Each deployment must set SERVE_DOMAIN to 'web' or 'webx' for complete independence."""
+        if cls.SERVE_DOMAIN == 'web':
+            return cls.URL_WEB
+        elif cls.SERVE_DOMAIN == 'webx':
+            return cls.URL_WEBX
+        else:
+            return cls.URL
+    
+    @classmethod
+    def get_current_domain(cls):
+        """Get the current domain identifier for this instance."""
+        if cls.SERVE_DOMAIN in ('web', 'webx'):
+            return cls.SERVE_DOMAIN
+        return None
     
     DATABASE_URL = str(getenv('DATABASE_URL', ''))
     UPDATES_CHANNEL = str(getenv('UPDATES_CHANNEL', None))
@@ -59,13 +97,14 @@ class Var(object):
 
     @classmethod
     def get_url_for_file(cls, file_id: str) -> str:
-        """Heroku setup → always return the base URL (no domain rotation)."""
+        """Return the base URL for THIS instance (domain-specific for independence)."""
         protocol = "https" if cls.HAS_SSL else "http"
-        return f"{protocol}://{cls.FQDN}/"
+        return f"{protocol}://{cls.get_fqdn()}/"
 
     @classmethod
     def get_dual_urls(cls):
-        """Return both domain URLs for dual domain setup."""
+        """Return both domain URLs for dual domain setup.
+        Note: For domain independence, each instance should only use its own domain."""
         return {
             'web': cls.URL_WEB,
             'webx': cls.URL_WEBX
