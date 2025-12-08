@@ -2,7 +2,7 @@ name: Daily Date Updater
 
 on:
   schedule:
-    - cron: "30 21 * * *"  # Runs at 9:30 PM UTC = 3:00 AM IST (UTC+5:30)
+    - cron: "0 */6 * * *"  # Runs at minute 0 of every 6th hour = 00:00, 06:00, 12:00, 18:00 UTC
   workflow_dispatch:        # Allows manual trigger
 
 jobs:
