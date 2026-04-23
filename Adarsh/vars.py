@@ -13,7 +13,7 @@ class Var(object):
     BOT_TOKEN = str(getenv('BOT_TOKEN', ''))
     name = str(getenv('name', 'Nobita-Stream-Bot'))
     SLEEP_THRESHOLD = int(getenv('SLEEP_THRESHOLD', '60'))
-    WORKERS = int(getenv('WORKERS', '4'))
+    WORKERS = int(getenv('WORKERS', '8'))
     BIN_CHANNEL = int(getenv('BIN_CHANNEL', ''))
     DB_CHANNEL = int(getenv('DB_CHANNEL', ''))
     DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True'
