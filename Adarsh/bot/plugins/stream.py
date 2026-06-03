@@ -248,18 +248,77 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
     except Exception as e:
         raise ValueError(f"Failed to create intermediate links: {str(e)}")
 
+async def create_pdf_download_links(message: Message):
+    """Create download-only links for PDF files. No streaming URL, no thumbnail."""
+    media = get_media_from_message(message)
+    if not media:
+        raise ValueError("No media found in message")
+
+    # Title priority: caption → filename → random
+    title = ""
+    if message.caption:
+        title = sanitize_caption(message.caption.html)
+    if not title or not title.strip():
+        filename = getattr(media, 'file_name', None) or get_name(message)
+        if filename:
+            title = sanitize_caption(filename)
+    if not title or not title.strip():
+        import secrets as _sec
+        title = f"pdf_{_sec.token_hex(4)}"
+
+    message_data = {
+        'message_id': message.id,
+        'file_name': getattr(media, 'file_name', None) or get_name(message),
+        'file_size': getattr(media, 'file_size', 0),
+        'mime_type': getattr(media, 'mime_type', 'application/pdf'),
+        'caption': title,
+        'from_chat_id': message.chat.id,
+        'file_unique_id': getattr(media, 'file_unique_id', '')
+    }
+
+    current_domain = Var.get_current_domain()
+
+    if current_domain:
+        token = await db.store_temp_file(message_data, domain=current_domain)
+        base_url = Var.get_base_url()
+        download_link = f"{base_url}prepare/{token}?type=download"
+        if current_domain == 'web':
+            return {"title": title, "pdf_downloadUrl": download_link}
+        else:
+            return {"title": title, "pdf_downloadUrlx": download_link}
+    else:
+        # Legacy mode: generate for both domains
+        token_web = await db.store_temp_file(message_data, domain='web')
+        token_webx = await db.store_temp_file(message_data, domain='webx')
+        return {
+            "title": title,
+            "pdf_downloadUrl": f"{Var.URL_WEB}prepare/{token_web}?type=download",
+            "pdf_downloadUrlx": f"{Var.URL_WEBX}prepare/{token_webx}?type=download"
+        }
+
+
 async def process_message(msg, json_output, skipped_messages, folder_name=None, client=None, shared_thumbnail_url=None):
     """Process individual message and create intermediate link (updated for new system with thumbnail support)"""
     try:
-        # Validate media content
+        # Silently skip plain text messages (no media at all)
         if not (msg.document or msg.video or msg.audio):
-            raise ValueError("No media content found in message")
-        
-        # Create intermediate link instead of immediate stream generation (with optional thumbnail)
-        # Pass shared_thumbnail_url to skip extraction if already have one
+            return
+
+        # PDF documents → download-only links, no streaming or thumbnail
+        is_pdf = (
+            msg.document and
+            getattr(msg.document, 'mime_type', '') == 'application/pdf'
+        )
+
+        if is_pdf:
+            pdf_data = await create_pdf_download_links(msg)
+            json_output.append(pdf_data)
+            return
+
+        # Videos / audio / other documents → full streaming + download links
         intermediate_data = await create_intermediate_link_for_batch(msg, folder_name, client, shared_thumbnail_url)
         json_output.append(intermediate_data)
-        
+
     except Exception as e:
         # Capture details for skipped messages
         file_name = get_name(msg) or "Unknown"
