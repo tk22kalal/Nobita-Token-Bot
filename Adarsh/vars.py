@@ -11,6 +11,7 @@ class Var(object):
     API_ID = int(getenv('API_ID', ''))
     API_HASH = str(getenv('API_HASH', ''))
     BOT_TOKEN = str(getenv('BOT_TOKEN', ''))
+    GIT_TOKEN = str(getenv('GIT_TOKEN', ''))
     name = str(getenv('name', 'Nobita-Stream-Bot'))
     SLEEP_THRESHOLD = int(getenv('SLEEP_THRESHOLD', '60'))
     WORKERS = int(getenv('WORKERS', '8'))
