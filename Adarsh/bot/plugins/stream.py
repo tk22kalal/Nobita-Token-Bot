@@ -328,26 +328,24 @@ async def process_message(msg, json_output, skipped_messages, folder_name=None, 
             "reason": str(e)
         })
 
-async def upload_to_github(file_content: str, file_path: str, commit_message: str, token: str, branch: str = None) -> bool:
-    """Upload JSON file to GitHub repository (improved, more robust).
+async def upload_to_github(file_content: str, file_path: str, commit_message: str, token: str, branch: str = None):
+    """Upload JSON file to GitHub repository.
 
     file_path: expected format "owner/repo/path/to/file.json"
-    Returns True on success, False on failure (logs response text for debugging).
+    Returns (True, None) on success, (False, error_detail) on failure.
     """
     import base64
     import aiohttp
 
     try:
         if not token:
-            print("upload_to_github: No token provided")
-            return False
+            return False, "GIT_TOKEN is empty or not set"
 
         # Normalize and split path
         normalized = file_path.strip().lstrip('/').rstrip('/')
         parts = normalized.split('/', 2)
         if len(parts) < 3:
-            print(f"Invalid file path format: {file_path}. Expected: owner/repo/path/to/file")
-            return False
+            return False, f"Invalid path format: '{file_path}' — expected owner/repo/path/to/file.json"
 
         owner, repo, path = parts[0], parts[1], parts[2]
         api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
@@ -360,22 +358,26 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
         }
 
         async with aiohttp.ClientSession() as session:
-            # Check if file exists to obtain sha (include branch if provided)
             params = {}
             if branch:
                 params['ref'] = branch
 
             sha = None
+            get_warning = None
             async with session.get(api_url, headers=headers, params=params) as resp_get:
                 if resp_get.status == 200:
                     data = await resp_get.json()
                     sha = data.get('sha')
                 elif resp_get.status == 404:
-                    sha = None
+                    sha = None  # file doesn't exist yet, will create
+                elif resp_get.status == 401:
+                    return False, "GitHub token is invalid or expired (401 Unauthorized)"
+                elif resp_get.status == 403:
+                    get_text = await resp_get.text()
+                    return False, f"GitHub access forbidden (403) — token may lack 'repo' scope. Detail: {get_text[:300]}"
                 else:
-                    text = await resp_get.text()
-                    print(f"upload_to_github: GET {api_url} returned status {resp_get.status}: {text}")
-                    # proceed; PUT will either create or fail
+                    get_text = await resp_get.text()
+                    get_warning = f"GET {resp_get.status}: {get_text[:200]}"
 
             payload = {
                 "message": commit_message or "Add file via bot",
@@ -387,18 +389,25 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
                 payload["branch"] = branch
 
             async with session.put(api_url, headers=headers, json=payload) as resp_put:
-                text = await resp_put.text()
+                resp_text = await resp_put.text()
                 if resp_put.status in (200, 201):
-                    return True
+                    return True, None
+                elif resp_put.status == 401:
+                    return False, "GitHub token invalid/expired (401). Re-check GIT_TOKEN."
+                elif resp_put.status == 403:
+                    return False, f"GitHub 403 Forbidden — token likely missing 'repo' write scope.\nRepo: {owner}/{repo}\nDetail: {resp_text[:300]}"
+                elif resp_put.status == 404:
+                    return False, f"GitHub 404 — repo '{owner}/{repo}' not found or token has no access to it.\nURL: {api_url}"
+                elif resp_put.status == 422:
+                    return False, f"GitHub 422 Unprocessable — possibly wrong branch or SHA conflict.\nDetail: {resp_text[:300]}"
                 else:
-                    # helpful debug log
-                    print(f"upload_to_github: PUT {api_url} returned status {resp_put.status}: {text}")
-                    # Common causes: permission issues, repo not found, token scope missing, path invalid
-                    return False
+                    detail = f"HTTP {resp_put.status}\nURL: {api_url}\nResponse: {resp_text[:400]}"
+                    if get_warning:
+                        detail = f"GET warning: {get_warning}\n{detail}"
+                    return False, detail
 
     except Exception as e:
-        print(f"Error uploading to GitHub: {e}")
-        return False
+        return False, f"Exception during upload: {type(e).__name__}: {e}"
 
 @StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
 async def batch(client: Client, message: Message):
@@ -574,7 +583,7 @@ async def batch(client: Client, message: Message):
                 github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
                 commit_msg = f"Add {json_filename} - {len(json_output)} lectures, {len(skipped_messages)} skipped"
                 
-                upload_success = await upload_to_github(
+                upload_success, upload_error = await upload_to_github(
                     json_content,
                     github_file_path,
                     commit_msg,
@@ -585,12 +594,16 @@ async def batch(client: Client, message: Message):
                     await status_msg.edit_text(
                         f"✅ {subject_name} completed!\n"
                         f"Uploaded: {json_filename}\n"
-                        f"Success: {len(json_output)} | Skipped: {len(skipped_messages)}\n\n"
+                        f"Lectures: {len(json_output)} | Skipped: {len(skipped_messages)}\n\n"
                         f"Progress: {idx}/{len(subjects_data)}"
                     )
                 else:
+                    error_detail = upload_error or "Unknown error"
+                    logging.error(f"GitHub upload failed for {subject_name}: {error_detail}")
                     await status_msg.edit_text(
-                        f"❌ Failed to upload {subject_name} to GitHub\n"
+                        f"❌ Failed to upload {subject_name} to GitHub\n\n"
+                        f"🔍 Reason:\n{error_detail}\n\n"
+                        f"📁 Path attempted: {github_file_path}\n"
                         f"Progress: {idx}/{len(subjects_data)}"
                     )
                 
