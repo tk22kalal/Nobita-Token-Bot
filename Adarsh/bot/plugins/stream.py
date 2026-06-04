@@ -175,10 +175,11 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
                 logging.info(f"✅ Thumbnail uploaded successfully: {thumbnail_url}")
                     
             except Exception as thumb_error:
-                logging.error(f"❌ Failed to generate/upload thumbnail for {caption}")
-                logging.error(f"   Error type: {type(thumb_error).__name__}")
-                logging.error(f"   Error details: {str(thumb_error)}", exc_info=True)
-                # Continue without thumbnail if there's an error
+                thumb_err_str = str(thumb_error)
+                logging.error(f"❌ Thumbnail failed for '{caption}': {thumb_err_str}", exc_info=True)
+                # Store the first thumbnail error so the batch loop can report it to the bot
+                if not message_data.get('_thumb_error'):
+                    message_data['_thumb_error'] = thumb_err_str
             finally:
                 # Always cleanup temporary files, even on failure
                 try:
@@ -243,7 +244,12 @@ async def create_intermediate_link_for_batch(message: Message, folder_name: str 
         
         if thumbnail_url:
             result["thumbnailUrl"] = thumbnail_url
-        
+
+        # Carry thumb error forward so the batch loop can surface it to the bot
+        thumb_err = message_data.get('_thumb_error')
+        if thumb_err:
+            result["_thumb_error"] = thumb_err
+
         return result
     except Exception as e:
         raise ValueError(f"Failed to create intermediate links: {str(e)}")
@@ -528,7 +534,8 @@ async def batch(client: Client, message: Message):
                 # Process messages in batches
                 batch_size = 50
                 processed_count = 0
-                shared_thumbnail_url = None  # Reset per subject - extract from first video in THIS subject only
+                shared_thumbnail_url = None  # Reset per subject
+                thumb_warning = None         # First thumbnail error seen in this subject
                 
                 for batch_start in range(start_id, end_id + 1, batch_size):
                     batch_end = min(batch_start + batch_size - 1, end_id)
@@ -560,19 +567,26 @@ async def batch(client: Client, message: Message):
                         # Pass shared_thumbnail_url so only first video extracts, rest reuse
                         await process_message(msg, json_output, skipped_messages, thumbnail_folder, client, shared_thumbnail_url)
                         
-                        # After processing first video, check if we got a thumbnail URL
-                        # If so, reuse it for all subsequent videos in THIS SUBJECT
-                        if not shared_thumbnail_url and json_output:
+                        # After processing first video, check result for thumbnail URL or error
+                        if json_output:
                             last_entry = json_output[-1]
-                            if 'thumbnailUrl' in last_entry:
+                            if not shared_thumbnail_url and 'thumbnailUrl' in last_entry:
                                 shared_thumbnail_url = last_entry['thumbnailUrl']
-                                logging.info(f"✅ Extracted thumbnail from first video in {subject_name}, will reuse for remaining {total_messages - processed_count} videos in this subject: {shared_thumbnail_url}")
-                
+                                logging.info(f"✅ Thumbnail reused for remaining videos in {subject_name}: {shared_thumbnail_url}")
+                            # Capture first thumbnail error to report to bot (only once per subject)
+                            if not thumb_warning and '_thumb_error' in last_entry:
+                                thumb_warning = last_entry.pop('_thumb_error')
+                            elif '_thumb_error' in last_entry:
+                                last_entry.pop('_thumb_error')  # strip from JSON even if already have warning
+
+                # Strip any leftover _thumb_error keys from all entries before saving
+                clean_output = [{k: v for k, v in e.items() if k != '_thumb_error'} for e in json_output]
+
                 # Prepare JSON output in the required format
                 output_data = {
                     "subjectName": subject_name.lower().replace(" ", ""),
-                    "lectures": json_output,       # successful processed lectures
-                    "skipped": skipped_messages    # skipped messages separately
+                    "lectures": clean_output,
+                    "skipped": skipped_messages
                 }
                 
                 # Save to file
@@ -581,7 +595,7 @@ async def batch(client: Client, message: Message):
                 
                 # Upload to GitHub
                 github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
-                commit_msg = f"Add {json_filename} - {len(json_output)} lectures, {len(skipped_messages)} skipped"
+                commit_msg = f"Add {json_filename} - {len(clean_output)} lectures, {len(skipped_messages)} skipped"
                 
                 upload_success, upload_error = await upload_to_github(
                     json_content,
@@ -589,12 +603,16 @@ async def batch(client: Client, message: Message):
                     commit_msg,
                     git_token
                 )
-                
+
+                # Build status text
+                thumb_note = f"\n⚠️ Thumbnail error: {thumb_warning[:200]}" if thumb_warning else ""
+
                 if upload_success:
                     await status_msg.edit_text(
                         f"✅ {subject_name} completed!\n"
                         f"Uploaded: {json_filename}\n"
-                        f"Lectures: {len(json_output)} | Skipped: {len(skipped_messages)}\n\n"
+                        f"Lectures: {len(clean_output)} | Skipped: {len(skipped_messages)}"
+                        f"{thumb_note}\n\n"
                         f"Progress: {idx}/{len(subjects_data)}"
                     )
                 else:
@@ -603,7 +621,8 @@ async def batch(client: Client, message: Message):
                     await status_msg.edit_text(
                         f"❌ Failed to upload {subject_name} to GitHub\n\n"
                         f"🔍 Reason:\n{error_detail}\n\n"
-                        f"📁 Path attempted: {github_file_path}\n"
+                        f"📁 Path attempted: {github_file_path}"
+                        f"{thumb_note}\n\n"
                         f"Progress: {idx}/{len(subjects_data)}"
                     )
                 
