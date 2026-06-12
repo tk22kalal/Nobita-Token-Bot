@@ -1264,45 +1264,36 @@ async def fwd_command(client: Client, message: Message):
                 # if any single message in the batch is missing/deleted.
                 for msg_id in range(start_id, end_id + 1):
                     try:
-                        forwarded = await client.forward_messages(
+                        # copy_message sends content without any "forwarded from" header
+                        copied = await client.copy_message(
                             chat_id=Var.DB_CHANNEL,
                             from_chat_id=src_chat_id,
-                            message_ids=msg_id,
-                            hide_sender_name=True
+                            message_id=msg_id
                         )
 
-                        # Pyrogram returns a single Message or a list
-                        if not isinstance(forwarded, list):
-                            forwarded = [forwarded] if forwarded else []
-
-                        for fwd_msg in forwarded:
-                            if fwd_msg and getattr(fwd_msg, 'id', None):
-                                if fwd_first_id is None or fwd_msg.id < fwd_first_id:
-                                    fwd_first_id = fwd_msg.id
-                                if fwd_last_id is None or fwd_msg.id > fwd_last_id:
-                                    fwd_last_id = fwd_msg.id
-                                forwarded_count += 1
+                        if copied and getattr(copied, 'id', None):
+                            if fwd_first_id is None or copied.id < fwd_first_id:
+                                fwd_first_id = copied.id
+                            if fwd_last_id is None or copied.id > fwd_last_id:
+                                fwd_last_id = copied.id
+                            forwarded_count += 1
 
                         await asyncio.sleep(0.3)
 
                     except FloodWait as e:
                         await asyncio.sleep(e.value + 2)
                         try:
-                            forwarded = await client.forward_messages(
+                            copied = await client.copy_message(
                                 chat_id=Var.DB_CHANNEL,
                                 from_chat_id=src_chat_id,
-                                message_ids=msg_id,
-                                hide_sender_name=True
+                                message_id=msg_id
                             )
-                            if not isinstance(forwarded, list):
-                                forwarded = [forwarded] if forwarded else []
-                            for fwd_msg in forwarded:
-                                if fwd_msg and getattr(fwd_msg, 'id', None):
-                                    if fwd_first_id is None or fwd_msg.id < fwd_first_id:
-                                        fwd_first_id = fwd_msg.id
-                                    if fwd_last_id is None or fwd_msg.id > fwd_last_id:
-                                        fwd_last_id = fwd_msg.id
-                                    forwarded_count += 1
+                            if copied and getattr(copied, 'id', None):
+                                if fwd_first_id is None or copied.id < fwd_first_id:
+                                    fwd_first_id = copied.id
+                                if fwd_last_id is None or copied.id > fwd_last_id:
+                                    fwd_last_id = copied.id
+                                forwarded_count += 1
                         except Exception as retry_err:
                             err_str = f"{type(retry_err).__name__}: {retry_err}"
                             logging.error(f"Retry failed msg {msg_id} in {subject_name}: {err_str}")
@@ -1311,7 +1302,7 @@ async def fwd_command(client: Client, message: Message):
                             failed_count += 1
                     except Exception as msg_err:
                         err_str = f"{type(msg_err).__name__}: {msg_err}"
-                        logging.error(f"Forward error msg {msg_id} in {subject_name}: {err_str}")
+                        logging.error(f"Copy error msg {msg_id} in {subject_name}: {err_str}")
                         if first_error is None:
                             first_error = err_str
                         failed_count += 1
