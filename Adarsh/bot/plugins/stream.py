@@ -1258,60 +1258,70 @@ async def fwd_command(client: Client, message: Message):
                 fwd_last_id = None
                 forwarded_count = 0
                 failed_count = 0
+                first_error = None  # capture first real error for display
 
-                # Forward in batches of 100 (Telegram limit)
-                batch_size = 100
-                for batch_start in range(start_id, end_id + 1, batch_size):
-                    batch_end = min(batch_start + batch_size - 1, end_id)
-                    msg_ids = list(range(batch_start, batch_end + 1))
-
+                # Forward one message at a time — batch forwarding fails entirely
+                # if any single message in the batch is missing/deleted.
+                for msg_id in range(start_id, end_id + 1):
                     try:
                         forwarded = await client.forward_messages(
                             chat_id=Var.DB_CHANNEL,
                             from_chat_id=src_chat_id,
-                            message_ids=msg_ids,
+                            message_ids=msg_id,
                             hide_sender_name=True
                         )
 
-                        # forward_messages returns a list or single Message
+                        # Pyrogram returns a single Message or a list
                         if not isinstance(forwarded, list):
-                            forwarded = [forwarded]
+                            forwarded = [forwarded] if forwarded else []
 
                         for fwd_msg in forwarded:
-                            if fwd_msg and fwd_msg.id:
+                            if fwd_msg and getattr(fwd_msg, 'id', None):
                                 if fwd_first_id is None or fwd_msg.id < fwd_first_id:
                                     fwd_first_id = fwd_msg.id
                                 if fwd_last_id is None or fwd_msg.id > fwd_last_id:
                                     fwd_last_id = fwd_msg.id
                                 forwarded_count += 1
 
+                        await asyncio.sleep(0.3)
+
                     except FloodWait as e:
-                        await asyncio.sleep(e.value)
-                        # Retry this batch
+                        await asyncio.sleep(e.value + 2)
                         try:
                             forwarded = await client.forward_messages(
                                 chat_id=Var.DB_CHANNEL,
                                 from_chat_id=src_chat_id,
-                                message_ids=msg_ids,
+                                message_ids=msg_id,
                                 hide_sender_name=True
                             )
                             if not isinstance(forwarded, list):
-                                forwarded = [forwarded]
+                                forwarded = [forwarded] if forwarded else []
                             for fwd_msg in forwarded:
-                                if fwd_msg and fwd_msg.id:
+                                if fwd_msg and getattr(fwd_msg, 'id', None):
                                     if fwd_first_id is None or fwd_msg.id < fwd_first_id:
                                         fwd_first_id = fwd_msg.id
                                     if fwd_last_id is None or fwd_msg.id > fwd_last_id:
                                         fwd_last_id = fwd_msg.id
                                     forwarded_count += 1
                         except Exception as retry_err:
-                            logging.error(f"Retry failed for {subject_name} batch {batch_start}-{batch_end}: {retry_err}")
-                            failed_count += len(msg_ids)
-                    except Exception as batch_err:
-                        logging.error(f"Batch forward error for {subject_name}: {batch_err}")
-                        failed_count += len(msg_ids)
+                            err_str = f"{type(retry_err).__name__}: {retry_err}"
+                            logging.error(f"Retry failed msg {msg_id} in {subject_name}: {err_str}")
+                            if first_error is None:
+                                first_error = err_str
+                            failed_count += 1
+                    except Exception as msg_err:
+                        err_str = f"{type(msg_err).__name__}: {msg_err}"
+                        logging.error(f"Forward error msg {msg_id} in {subject_name}: {err_str}")
+                        if first_error is None:
+                            first_error = err_str
+                        failed_count += 1
 
-                    await asyncio.sleep(0.5)
+                    # Update status every 20 messages
+                    if (msg_id - start_id + 1) % 20 == 0:
+                        await status_msg.edit_text(
+                            f"📤 {subject_name}: {forwarded_count} forwarded, {failed_count} failed\n"
+                            f"Progress: msg {msg_id - start_id + 1}/{total} | Subject {idx}/{len(subjects_data)}"
+                        )
 
                 if fwd_first_id and fwd_last_id:
                     f_link = f"https://t.me/c/{db_short}/{fwd_first_id}"
@@ -1329,9 +1339,12 @@ async def fwd_command(client: Client, message: Message):
                         f"Progress: {idx}/{len(subjects_data)}"
                     )
                 else:
-                    result_lines.append(f"{subject_name}\n❌ No messages forwarded successfully")
+                    error_hint = f"\n🔍 Error: {first_error}" if first_error else "\n🔍 No error captured — bot may lack access to source channel, or messages are empty/service messages."
+                    result_lines.append(f"{subject_name}\n❌ No messages forwarded successfully{error_hint}")
                     await status_msg.edit_text(
-                        f"❌ {subject_name}: nothing forwarded\n\n"
+                        f"❌ {subject_name}: nothing forwarded\n"
+                        f"Attempted: {total} messages | Failed: {failed_count}"
+                        f"{error_hint}\n\n"
                         f"Progress: {idx}/{len(subjects_data)}"
                     )
 
