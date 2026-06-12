@@ -1020,7 +1020,15 @@ async def _run_batch_processing(client: Client, message: Message, github_dest_fo
             )
             return
 
-        status_msg = await message.reply_text(f"🚀 Starting batch processing for {len(subjects_data)} subjects...")
+        # status_msg is used ONLY for progress — never edited to show errors
+        status_msg = await message.reply_text(
+            f"🚀 Starting batch processing for {len(subjects_data)} subjects...\n"
+            f"📁 Repo: sunday2212/webreadme4\n"
+            f"📂 Folder: {github_dest_folder.split('/', 2)[2] if '/' in github_dest_folder else github_dest_folder}"
+        )
+
+        success_count = 0
+        fail_count = 0
 
         for idx, subject_info in enumerate(subjects_data, 1):
             subject_name = subject_info['subject']
@@ -1038,7 +1046,17 @@ async def _run_batch_processing(client: Client, message: Message, github_dest_fo
                 s_msg_id = await get_message_id(client, MockMessage(subject_info['last']))
 
                 if not f_msg_id or not s_msg_id:
-                    await status_msg.edit_text(f"❌ Invalid message IDs for {subject_name}")
+                    fail_count += 1
+                    # Send as NEW message so it is never overwritten
+                    await message.reply_text(
+                        f"❌ [{idx}/{len(subjects_data)}] {subject_name}\n"
+                        f"Invalid message IDs — could not resolve links:\n"
+                        f"F: {subject_info['first']}\n"
+                        f"L: {subject_info['last']}"
+                    )
+                    await status_msg.edit_text(
+                        f"⏳ Progress: {idx}/{len(subjects_data)} | ✅ {success_count} | ❌ {fail_count}"
+                    )
                     continue
 
                 start_id = min(f_msg_id, s_msg_id)
@@ -1046,9 +1064,8 @@ async def _run_batch_processing(client: Client, message: Message, github_dest_fo
                 total_messages = end_id - start_id + 1
 
                 await status_msg.edit_text(
-                    f"🔄 Processing {subject_name}...\n"
-                    f"Subject {idx}/{len(subjects_data)}\n"
-                    f"Messages: {total_messages}"
+                    f"🔄 [{idx}/{len(subjects_data)}] Processing: {subject_name}\n"
+                    f"Messages: {total_messages} | ✅ {success_count} | ❌ {fail_count}"
                 )
 
                 batch_size = 50
@@ -1062,7 +1079,7 @@ async def _run_batch_processing(client: Client, message: Message, github_dest_fo
 
                     try:
                         messages = await get_messages(client, msg_ids)
-                    except Exception as e:
+                    except Exception:
                         messages = []
                         for msg_id in msg_ids:
                             try:
@@ -1104,61 +1121,93 @@ async def _run_batch_processing(client: Client, message: Message, github_dest_fo
 
                 json_filename = f"{subject_name}.json"
                 json_content = json.dumps(output_data, indent=4, ensure_ascii=False)
-
                 github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
-                commit_msg = f"Add {json_filename} - {len(clean_output)} lectures, {len(skipped_messages)} skipped"
+                commit_msg_json = f"Add {json_filename} - {len(clean_output)} lectures"
 
+                logging.info(f"Uploading JSON to GitHub: {github_file_path}")
                 upload_success, upload_error = await upload_to_github(
                     json_content,
                     github_file_path,
-                    commit_msg,
+                    commit_msg_json,
                     git_token
                 )
 
                 html_filename = f"{subject_name}.html"
                 html_content = generate_lecture_html(json_filename)
                 github_html_path = f"{github_dest_folder}/{html_filename}".replace('//', '/')
-                html_commit_msg = f"Add {html_filename} for {json_filename}"
-
+                logging.info(f"Uploading HTML to GitHub: {github_html_path}")
                 html_upload_success, html_upload_error = await upload_to_github(
                     html_content,
                     github_html_path,
-                    html_commit_msg,
+                    f"Add {html_filename}",
                     git_token
                 )
 
-                thumb_note = f"\n⚠️ Thumbnail error: {thumb_warning[:200]}" if thumb_warning else ""
-                html_note = "" if html_upload_success else f"\n⚠️ HTML upload failed: {(html_upload_error or '')[:150]}"
-
                 if upload_success:
+                    success_count += 1
+                    # Build success note with any warnings
+                    notes = []
+                    if thumb_warning:
+                        notes.append(f"⚠️ Thumb: {thumb_warning[:150]}")
+                    if not html_upload_success:
+                        notes.append(f"⚠️ HTML upload failed: {(html_upload_error or '')[:150]}")
+                    note_text = "\n" + "\n".join(notes) if notes else ""
                     await status_msg.edit_text(
-                        f"✅ {subject_name} completed!\n"
-                        f"Uploaded: {json_filename} + {html_filename}\n"
-                        f"Lectures: {len(clean_output)} | Skipped: {len(skipped_messages)}"
-                        f"{thumb_note}{html_note}\n\n"
-                        f"Progress: {idx}/{len(subjects_data)}"
+                        f"✅ [{idx}/{len(subjects_data)}] {subject_name} done!\n"
+                        f"Lectures: {len(clean_output)} | Skipped: {len(skipped_messages)}\n"
+                        f"JSON: ✅  HTML: {'✅' if html_upload_success else '❌'}"
+                        f"{note_text}\n\n"
+                        f"Overall: ✅ {success_count} | ❌ {fail_count}"
                     )
                 else:
+                    fail_count += 1
                     error_detail = upload_error or "Unknown error"
-                    logging.error(f"GitHub upload failed for {subject_name}: {error_detail}")
+                    logging.error(f"GitHub JSON upload failed for {subject_name}: {error_detail}")
+                    # Send error as a NEW separate message — it will NOT be overwritten
+                    await message.reply_text(
+                        f"❌ [{idx}/{len(subjects_data)}] {subject_name} — JSON upload failed\n\n"
+                        f"📁 Path: {github_file_path}\n\n"
+                        f"🔍 Error:\n{error_detail}"
+                    )
+                    if not html_upload_success and html_upload_error:
+                        logging.error(f"GitHub HTML upload also failed for {subject_name}: {html_upload_error}")
+                        await message.reply_text(
+                            f"❌ [{idx}/{len(subjects_data)}] {subject_name} — HTML upload also failed\n\n"
+                            f"📁 Path: {github_html_path}\n\n"
+                            f"🔍 Error:\n{html_upload_error}"
+                        )
                     await status_msg.edit_text(
-                        f"❌ Failed to upload {subject_name} to GitHub\n\n"
-                        f"🔍 Reason:\n{error_detail}\n\n"
-                        f"📁 Path attempted: {github_file_path}"
-                        f"{thumb_note}{html_note}\n\n"
-                        f"Progress: {idx}/{len(subjects_data)}"
+                        f"⏳ [{idx}/{len(subjects_data)}] {subject_name} failed — see error above\n\n"
+                        f"Overall: ✅ {success_count} | ❌ {fail_count}"
                     )
 
                 await asyncio.sleep(1)
 
             except Exception as e:
-                await status_msg.edit_text(f"❌ Error processing {subject_name}: {str(e)}")
+                fail_count += 1
+                err_text = f"{type(e).__name__}: {e}"
+                logging.error(f"Exception processing {subject_name}: {err_text}", exc_info=True)
+                # Send as NEW message so it stays visible
+                await message.reply_text(
+                    f"❌ [{idx}/{len(subjects_data)}] {subject_name} — Exception\n\n{err_text}"
+                )
+                await status_msg.edit_text(
+                    f"⏳ [{idx}/{len(subjects_data)}] {subject_name} failed — see error above\n\n"
+                    f"Overall: ✅ {success_count} | ❌ {fail_count}"
+                )
                 continue
 
-        await status_msg.edit_text(f"✅ All {len(subjects_data)} subjects processed and uploaded to GitHub!")
+        # Final summary — always a new message so it appears after all error messages
+        summary = (
+            f"🏁 Batch complete!\n"
+            f"Total: {len(subjects_data)} | ✅ Success: {success_count} | ❌ Failed: {fail_count}"
+        )
+        await message.reply_text(summary)
+        await status_msg.edit_text(f"✅ Done — {success_count}/{len(subjects_data)} uploaded successfully.")
 
     except Exception as e:
-        await message.reply(f"❌ Error: {str(e)}")
+        logging.error(f"Fatal error in _run_batch_processing: {e}", exc_info=True)
+        await message.reply(f"❌ Fatal error: {type(e).__name__}: {e}")
 
 
 def parse_tme_link(link: str):
