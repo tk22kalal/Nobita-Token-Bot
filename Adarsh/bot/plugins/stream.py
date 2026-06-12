@@ -25,6 +25,12 @@ DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True
 GIT_TOKEN = os.environ.get('GIT_TOKEN', '')
 THUMB_API = os.environ.get('THUMB_API', '')
 
+GITHUB_OWNER_REPO = "sunday2212/webreadme4"
+
+# State machine for /batch and /fwd conversations: user_id -> {'state': str, 'data': dict}
+_batch_sessions = {}
+_fwd_sessions = {}
+
 def sanitize_caption(text: str) -> str:
     """Sanitize caption by removing HTML tags, links, @mentions, and hashtags"""
     if not text:
@@ -918,48 +924,66 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
         return False, f"Exception during upload: {type(e).__name__}: {e}"
 
 @StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
-async def batch(client: Client, message: Message):
-    Var.reset_batch()
-    
+async def batch_command(client: Client, message: Message):
+    user_id = message.from_user.id
+    # Clear any previous session and start fresh
+    _batch_sessions[user_id] = {'state': 'waiting_folder', 'data': {}}
+    await message.reply_text(
+        "📁 Enter the destination folder path:\n\n"
+        "Format: path/to/folder\n"
+        "Example: 1234xxx/marrow/anatomy\n\n"
+        "This is where JSON files will be uploaded."
+    )
+
+
+@StreamBot.on_message(
+    filters.private & filters.user(list(Var.OWNER_ID)) & filters.text
+    & ~filters.command(['batch', 'fwd', 'start', 'gen', 'users', 'broadcast', 'ping'])
+)
+async def batch_conversation_handler(client: Client, message: Message):
+    user_id = message.from_user.id
+    session = _batch_sessions.get(user_id)
+    if not session:
+        return
+
+    if session['state'] == 'waiting_folder':
+        folder_path = message.text.strip()
+        github_dest_folder = f"{GITHUB_OWNER_REPO}/{folder_path}"
+        _batch_sessions[user_id] = {
+            'state': 'waiting_links',
+            'data': {'github_dest_folder': github_dest_folder}
+        }
+        await message.reply_text(
+            "📝 Send the links with subjects in this format:\n\n"
+            "ANATOMY\n"
+            "F - https://t.me/c/2024354927/237364\n"
+            "L - https://t.me/c/2024354927/237366\n\n"
+            "BIOCHEMISTRY\n"
+            "F - https://t.me/c/2024354927/237460\n"
+            "L - https://t.me/c/2024354927/237462\n\n"
+            "Each subject should have F (first) and L (last) message links."
+        )
+
+    elif session['state'] == 'waiting_links':
+        github_dest_folder = session['data']['github_dest_folder']
+        del _batch_sessions[user_id]
+        await _run_batch_processing(client, message, github_dest_folder)
+
+
+async def _run_batch_processing(client: Client, message: Message, github_dest_folder: str):
+    """Run the actual batch processing after collecting both inputs."""
     try:
-        # Step 1: Ask for GitHub destination folder
-        dest_folder_msg = await client.ask(
-            text="📁 Enter the GitHub destination folder path:\n\n"
-                 "Format: owner/repo/path/to/folder\n"
-                 "Example: username/repository/marrow/anatomy\n\n"
-                 "This is where JSON files will be uploaded.",
-            chat_id=message.from_user.id,
-            filters=filters.text,
-            timeout=60
-        )
-        github_dest_folder = dest_folder_msg.text.strip()
-        
-        # Step 2: Ask for links with subjects
-        links_msg = await client.ask(
-            text="📝 Send the links with subjects in this format:\n\n"
-                 "ANATOMY\nF - https://t.me/c/2024354927/237364\nL - https://t.me/c/2024354927/237366\n\n"
-                 "BIOCHEMISTRY\nF - https://t.me/c/2024354927/237460\nL - https://t.me/c/2024354927/237462\n\n"
-                 "Each subject should have F (first) and L (last) message links.",
-            chat_id=message.from_user.id,
-            filters=filters.text,
-            timeout=120
-        )
-        
-        # Parse the input
-        links_text = links_msg.text.strip()
+        links_text = message.text.strip()
         subjects_data = []
         current_subject = None
         current_first = None
         current_last = None
-        
+
         for line in links_text.split('\n'):
             line = line.strip()
             if not line:
                 continue
-            
-            # Check if it's a subject name (line without F - or L -)
             if not line.startswith('F -') and not line.startswith('L -'):
-                # Save previous subject if exists
                 if current_subject and current_first and current_last:
                     subjects_data.append({
                         'subject': current_subject,
@@ -973,20 +997,18 @@ async def batch(client: Client, message: Message):
                 current_first = line.replace('F -', '').strip()
             elif line.startswith('L -'):
                 current_last = line.replace('L -', '').strip()
-        
-        # Add last subject
+
         if current_subject and current_first and current_last:
             subjects_data.append({
                 'subject': current_subject,
                 'first': current_first,
                 'last': current_last
             })
-        
+
         if not subjects_data:
             await message.reply("❌ No valid subjects found in the input. Please check the format.")
             return
-        
-        # Get GitHub token from environment
+
         git_token = os.environ.get('GIT_TOKEN', '')
         if not git_token:
             await message.reply(
@@ -997,52 +1019,47 @@ async def batch(client: Client, message: Message):
                 "3. Add GIT_TOKEN to your environment variables"
             )
             return
-        
+
         status_msg = await message.reply_text(f"🚀 Starting batch processing for {len(subjects_data)} subjects...")
-        
-        # Process each subject
+
         for idx, subject_info in enumerate(subjects_data, 1):
             subject_name = subject_info['subject']
             json_output = []
             skipped_messages = []
-            
+
             try:
-                # Create mock message objects for get_message_id
                 class MockMessage:
                     def __init__(self, text):
                         self.text = text
                         self.forward_from_chat = None
                         self.forward_sender_name = None
-                
-                # Get first and last message IDs
+
                 f_msg_id = await get_message_id(client, MockMessage(subject_info['first']))
                 s_msg_id = await get_message_id(client, MockMessage(subject_info['last']))
-                
+
                 if not f_msg_id or not s_msg_id:
                     await status_msg.edit_text(f"❌ Invalid message IDs for {subject_name}")
                     continue
-                
-                # Determine message range
+
                 start_id = min(f_msg_id, s_msg_id)
                 end_id = max(f_msg_id, s_msg_id)
                 total_messages = end_id - start_id + 1
-                
+
                 await status_msg.edit_text(
                     f"🔄 Processing {subject_name}...\n"
                     f"Subject {idx}/{len(subjects_data)}\n"
                     f"Messages: {total_messages}"
                 )
-                
-                # Process messages in batches
+
                 batch_size = 50
                 processed_count = 0
-                shared_thumbnail_url = None  # Reset per subject
-                thumb_warning = None         # First thumbnail error seen in this subject
-                
+                shared_thumbnail_url = None
+                thumb_warning = None
+
                 for batch_start in range(start_id, end_id + 1, batch_size):
                     batch_end = min(batch_start + batch_size - 1, end_id)
                     msg_ids = list(range(batch_start, batch_end + 1))
-                    
+
                     try:
                         messages = await get_messages(client, msg_ids)
                     except Exception as e:
@@ -1053,7 +1070,7 @@ async def batch(client: Client, message: Message):
                                 messages.append(msg)
                             except:
                                 messages.append(None)
-                    
+
                     for msg in messages:
                         processed_count += 1
                         if not msg:
@@ -1063,42 +1080,34 @@ async def batch(client: Client, message: Message):
                                 "reason": "Message not found"
                             })
                             continue
-                        
-                        # Use subject name as folder for thumbnail organization
+
                         thumbnail_folder = subject_name.lower().replace(" ", "_")
-                        # Pass shared_thumbnail_url so only first video extracts, rest reuse
                         await process_message(msg, json_output, skipped_messages, thumbnail_folder, client, shared_thumbnail_url)
-                        
-                        # After processing first video, check result for thumbnail URL or error
+
                         if json_output:
                             last_entry = json_output[-1]
                             if not shared_thumbnail_url and 'thumbnailUrl' in last_entry:
                                 shared_thumbnail_url = last_entry['thumbnailUrl']
                                 logging.info(f"✅ Thumbnail reused for remaining videos in {subject_name}: {shared_thumbnail_url}")
-                            # Capture first thumbnail error to report to bot (only once per subject)
                             if not thumb_warning and '_thumb_error' in last_entry:
                                 thumb_warning = last_entry.pop('_thumb_error')
                             elif '_thumb_error' in last_entry:
-                                last_entry.pop('_thumb_error')  # strip from JSON even if already have warning
+                                last_entry.pop('_thumb_error')
 
-                # Strip any leftover _thumb_error keys from all entries before saving
                 clean_output = [{k: v for k, v in e.items() if k != '_thumb_error'} for e in json_output]
 
-                # Prepare JSON output in the required format
                 output_data = {
                     "subjectName": subject_name.lower().replace(" ", ""),
                     "lectures": clean_output,
                     "skipped": skipped_messages
                 }
-                
-                # Save to file
+
                 json_filename = f"{subject_name}.json"
                 json_content = json.dumps(output_data, indent=4, ensure_ascii=False)
-                
-                # Upload JSON to GitHub
+
                 github_file_path = f"{github_dest_folder}/{json_filename}".replace('//', '/')
                 commit_msg = f"Add {json_filename} - {len(clean_output)} lectures, {len(skipped_messages)} skipped"
-                
+
                 upload_success, upload_error = await upload_to_github(
                     json_content,
                     github_file_path,
@@ -1106,7 +1115,6 @@ async def batch(client: Client, message: Message):
                     git_token
                 )
 
-                # Upload HTML to GitHub alongside the JSON
                 html_filename = f"{subject_name}.html"
                 html_content = generate_lecture_html(json_filename)
                 github_html_path = f"{github_dest_folder}/{html_filename}".replace('//', '/')
@@ -1119,7 +1127,6 @@ async def batch(client: Client, message: Message):
                     git_token
                 )
 
-                # Build status text
                 thumb_note = f"\n⚠️ Thumbnail error: {thumb_warning[:200]}" if thumb_warning else ""
                 html_note = "" if html_upload_success else f"\n⚠️ HTML upload failed: {(html_upload_error or '')[:150]}"
 
@@ -1141,18 +1148,15 @@ async def batch(client: Client, message: Message):
                         f"{thumb_note}{html_note}\n\n"
                         f"Progress: {idx}/{len(subjects_data)}"
                     )
-                
-                # Small delay between subjects
+
                 await asyncio.sleep(1)
-                
+
             except Exception as e:
                 await status_msg.edit_text(f"❌ Error processing {subject_name}: {str(e)}")
                 continue
-        
+
         await status_msg.edit_text(f"✅ All {len(subjects_data)} subjects processed and uploaded to GitHub!")
-        
-    except asyncio.TimeoutError:
-        await message.reply("⏱️ Request timeout. Please try again.")
+
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)}")
 
