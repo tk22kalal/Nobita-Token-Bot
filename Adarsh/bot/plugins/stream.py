@@ -1157,6 +1157,204 @@ async def batch(client: Client, message: Message):
         await message.reply(f"❌ Error: {str(e)}")
 
 
+def parse_tme_link(link: str):
+    """Parse a t.me/c/CHANNEL_ID/MSG_ID link.
+    Returns (chat_id_int, msg_id_int) or raises ValueError."""
+    link = link.strip()
+    pattern = r"https?://t\.me/c/(\d+)/(\d+)"
+    m = re.match(pattern, link)
+    if not m:
+        raise ValueError(f"Cannot parse link: {link}")
+    chat_id = int(f"-100{m.group(1)}")
+    msg_id = int(m.group(2))
+    return chat_id, msg_id
+
+
+def db_channel_short_id(db_channel: int) -> str:
+    """Convert -1002024354927 → '2024354927' for use in t.me links."""
+    s = str(db_channel)
+    if s.startswith("-100"):
+        return s[4:]
+    return s.lstrip("-")
+
+
+@StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('fwd'))
+async def fwd_command(client: Client, message: Message):
+    """Forward messages from a source channel to the DB channel and return new F/L links."""
+    try:
+        links_msg = await client.ask(
+            text="📝 Send subjects with F/L links from the *source* channel:\n\n"
+                 "cbbanatomy\n"
+                 "F - https://t.me/c/SOURCE_CHANNEL/237\n"
+                 "L - https://t.me/c/SOURCE_CHANNEL/251\n\n"
+                 "cbbpyt\n"
+                 "F - https://t.me/c/SOURCE_CHANNEL/460\n"
+                 "L - https://t.me/c/SOURCE_CHANNEL/469\n\n"
+                 "Bot must be admin in the source channel.",
+            chat_id=message.from_user.id,
+            filters=filters.text,
+            timeout=120
+        )
+
+        links_text = links_msg.text.strip()
+        subjects_data = []
+        current_subject = None
+        current_first = None
+        current_last = None
+
+        for line in links_text.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            if not line.startswith('F -') and not line.startswith('L -'):
+                if current_subject and current_first and current_last:
+                    subjects_data.append({
+                        'subject': current_subject,
+                        'first': current_first,
+                        'last': current_last
+                    })
+                current_subject = line
+                current_first = None
+                current_last = None
+            elif line.startswith('F -'):
+                current_first = line.replace('F -', '').strip()
+            elif line.startswith('L -'):
+                current_last = line.replace('L -', '').strip()
+
+        if current_subject and current_first and current_last:
+            subjects_data.append({
+                'subject': current_subject,
+                'first': current_first,
+                'last': current_last
+            })
+
+        if not subjects_data:
+            await message.reply("❌ No valid subjects found. Check the format and try again.")
+            return
+
+        status_msg = await message.reply_text(
+            f"🚀 Starting forward of {len(subjects_data)} subject(s) to DB channel..."
+        )
+
+        db_short = db_channel_short_id(Var.DB_CHANNEL)
+        result_lines = []
+
+        for idx, subject_info in enumerate(subjects_data, 1):
+            subject_name = subject_info['subject']
+            try:
+                src_chat_id, first_msg_id = parse_tme_link(subject_info['first'])
+                _, last_msg_id = parse_tme_link(subject_info['last'])
+
+                start_id = min(first_msg_id, last_msg_id)
+                end_id = max(first_msg_id, last_msg_id)
+                total = end_id - start_id + 1
+
+                await status_msg.edit_text(
+                    f"📤 Forwarding {subject_name}...\n"
+                    f"Subject {idx}/{len(subjects_data)} | Messages: {total}"
+                )
+
+                fwd_first_id = None
+                fwd_last_id = None
+                forwarded_count = 0
+                failed_count = 0
+
+                # Forward in batches of 100 (Telegram limit)
+                batch_size = 100
+                for batch_start in range(start_id, end_id + 1, batch_size):
+                    batch_end = min(batch_start + batch_size - 1, end_id)
+                    msg_ids = list(range(batch_start, batch_end + 1))
+
+                    try:
+                        forwarded = await client.forward_messages(
+                            chat_id=Var.DB_CHANNEL,
+                            from_chat_id=src_chat_id,
+                            message_ids=msg_ids,
+                            hide_sender_name=True
+                        )
+
+                        # forward_messages returns a list or single Message
+                        if not isinstance(forwarded, list):
+                            forwarded = [forwarded]
+
+                        for fwd_msg in forwarded:
+                            if fwd_msg and fwd_msg.id:
+                                if fwd_first_id is None or fwd_msg.id < fwd_first_id:
+                                    fwd_first_id = fwd_msg.id
+                                if fwd_last_id is None or fwd_msg.id > fwd_last_id:
+                                    fwd_last_id = fwd_msg.id
+                                forwarded_count += 1
+
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value)
+                        # Retry this batch
+                        try:
+                            forwarded = await client.forward_messages(
+                                chat_id=Var.DB_CHANNEL,
+                                from_chat_id=src_chat_id,
+                                message_ids=msg_ids,
+                                hide_sender_name=True
+                            )
+                            if not isinstance(forwarded, list):
+                                forwarded = [forwarded]
+                            for fwd_msg in forwarded:
+                                if fwd_msg and fwd_msg.id:
+                                    if fwd_first_id is None or fwd_msg.id < fwd_first_id:
+                                        fwd_first_id = fwd_msg.id
+                                    if fwd_last_id is None or fwd_msg.id > fwd_last_id:
+                                        fwd_last_id = fwd_msg.id
+                                    forwarded_count += 1
+                        except Exception as retry_err:
+                            logging.error(f"Retry failed for {subject_name} batch {batch_start}-{batch_end}: {retry_err}")
+                            failed_count += len(msg_ids)
+                    except Exception as batch_err:
+                        logging.error(f"Batch forward error for {subject_name}: {batch_err}")
+                        failed_count += len(msg_ids)
+
+                    await asyncio.sleep(0.5)
+
+                if fwd_first_id and fwd_last_id:
+                    f_link = f"https://t.me/c/{db_short}/{fwd_first_id}"
+                    l_link = f"https://t.me/c/{db_short}/{fwd_last_id}"
+                    result_lines.append(
+                        f"{subject_name}\n"
+                        f"F - {f_link}\n"
+                        f"L - {l_link}"
+                    )
+                    await status_msg.edit_text(
+                        f"✅ {subject_name} done!\n"
+                        f"Forwarded: {forwarded_count} | Failed: {failed_count}\n"
+                        f"F - {f_link}\n"
+                        f"L - {l_link}\n\n"
+                        f"Progress: {idx}/{len(subjects_data)}"
+                    )
+                else:
+                    result_lines.append(f"{subject_name}\n❌ No messages forwarded successfully")
+                    await status_msg.edit_text(
+                        f"❌ {subject_name}: nothing forwarded\n\n"
+                        f"Progress: {idx}/{len(subjects_data)}"
+                    )
+
+                await asyncio.sleep(1)
+
+            except Exception as e:
+                logging.error(f"Error forwarding {subject_name}: {e}", exc_info=True)
+                result_lines.append(f"{subject_name}\n❌ Error: {str(e)}")
+                await status_msg.edit_text(
+                    f"❌ Error on {subject_name}: {str(e)}\n\n"
+                    f"Progress: {idx}/{len(subjects_data)}"
+                )
+
+        # Send final summary with all new F/L links
+        final_text = "✅ Forward complete! New DB channel links:\n\n" + "\n\n".join(result_lines)
+        await message.reply_text(final_text, disable_web_page_preview=True)
+
+    except asyncio.TimeoutError:
+        await message.reply("⏱️ Request timeout. Please try again.")
+    except Exception as e:
+        await message.reply(f"❌ Error: {str(e)}")
+
+
 @StreamBot.on_message((filters.private) & (filters.document | filters.audio | filters.photo), group=3)
 async def private_receive_handler(c: Client, m: Message):
     try:
