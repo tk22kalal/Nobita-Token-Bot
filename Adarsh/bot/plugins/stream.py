@@ -1255,25 +1255,40 @@ def _get_topic_id_from_msg(msg) -> "int | None":
 
 
 def _parse_fbatch_range(raw: str):
-    """Parse 'START_LINK-END_LINK' input where links are supergroup t.me links.
-    
-    START/END format: https://t.me/c/CHAT_ID/TOPIC_ID/MSG_ID
-    Separator: '-' that appears directly before 'https'
-    
-    Returns (chat_id, start_topic_id, start_msg_id, end_topic_id, end_msg_id) or None.
+    """Parse 'START_LINK-END_LINK' input.
+
+    Supported link formats:
+      2-part: https://t.me/c/CHAT_ID/MSG_ID
+      3-part: https://t.me/c/CHAT_ID/TOPIC_ID/MSG_ID
+
+    Separator: '-' immediately before 'https'.
+    Returns (chat_id, scan_start_msg_id, scan_end_msg_id) or None.
     """
     raw = raw.strip()
     parts = re.split(r'-(?=https?://)', raw, maxsplit=1)
     if len(parts) != 2:
         return None
     start_link, end_link = parts[0].strip(), parts[1].strip()
-    pat = r"https?://t\.me/c/(\d+)/(\d+)/(\d+)"
-    ms = re.match(pat, start_link)
-    me = re.match(pat, end_link)
-    if not ms or not me:
+
+    def _extract(link: str):
+        """Return (chat_id, msg_id) from 2-part or 3-part t.me/c link."""
+        # 3-part: CHAT/TOPIC/MSG — msg_id is the last number
+        m = re.match(r"https?://t\.me/c/(\d+)/\d+/(\d+)", link)
+        if m:
+            return int(f"-100{m.group(1)}"), int(m.group(2))
+        # 2-part: CHAT/MSG
+        m = re.match(r"https?://t\.me/c/(\d+)/(\d+)", link)
+        if m:
+            return int(f"-100{m.group(1)}"), int(m.group(2))
+        return None, None
+
+    s_chat, s_msg = _extract(start_link)
+    e_chat, e_msg = _extract(end_link)
+    if s_chat is None or e_chat is None:
         return None
-    chat_id = int(f"-100{ms.group(1)}")
-    return chat_id, int(ms.group(2)), int(ms.group(3)), int(me.group(2)), int(me.group(3))
+    if s_chat != e_chat:
+        return None   # both links must be from the same chat
+    return s_chat, s_msg, e_msg
 
 
 async def _scan_forum_topics(client: Client, chat_id: int, scan_start: int, scan_end: int, status_msg) -> "dict[int, dict]":
@@ -1358,10 +1373,12 @@ async def fbatch_command(client: Client, message: Message):
     _fbatch_sessions[user_id] = {'state': 'waiting_range'}
     await message.reply_text(
         "📋 Forum Topic Scanner\n\n"
-        "Send the start–end link range to scan:\n\n"
-        "Format: START_LINK-END_LINK\n\n"
-        "Example:\n"
-        "https://t.me/c/2932205861/116/117-https://t.me/c/2932205861/1040/1642"
+        "Send the first and last message links of the supergroup:\n\n"
+        "FORMAT: FIRST_MSG_LINK-LAST_MSG_LINK\n\n"
+        "✅ Both formats work:\n"
+        "https://t.me/c/3950094573/5-https://t.me/c/3950094573/9\n\n"
+        "https://t.me/c/2932205861/116/117-https://t.me/c/2932205861/1040/1642\n\n"
+        "Bot will scan all messages between the two IDs and group them by topic."
     )
 
 
@@ -1373,12 +1390,13 @@ async def _run_fbatch_scan(client: Client, message: Message):
     if not parsed:
         await message.reply_text(
             "❌ Could not parse that link range.\n\n"
-            "Use the format:\n"
-            "https://t.me/c/CHATID/TOPIC/MSGID-https://t.me/c/CHATID/TOPIC2/MSGID2"
+            "Accepted formats:\n"
+            "• `https://t.me/c/CHATID/MSG1-https://t.me/c/CHATID/MSG2`\n"
+            "• `https://t.me/c/CHATID/TOPIC/MSG1-https://t.me/c/CHATID/TOPIC2/MSG2`"
         )
         return
 
-    chat_id, start_topic, scan_start, end_topic, scan_end = parsed
+    chat_id, scan_start, scan_end = parsed
 
     if scan_end < scan_start:
         await message.reply_text("❌ End message ID must be ≥ start message ID.")
