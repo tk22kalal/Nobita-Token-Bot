@@ -30,6 +30,10 @@ GITHUB_OWNER_REPO = "sunday2212/webreadme4"
 # State machine for /batch and /fwd conversations: user_id -> {'state': str, 'data': dict}
 _batch_sessions = {}
 _fwd_sessions = {}
+_fbatch_sessions = {}   # user_id → {'state': str}
+
+_FBATCH_CHUNK = 100     # message IDs per get_messages() call
+_FBATCH_DELAY = 0.4     # seconds between chunks (flood-safe)
 
 def sanitize_caption(text: str) -> str:
     """Sanitize caption by removing HTML tags, links, @mentions, and hashtags"""
@@ -938,36 +942,44 @@ async def batch_command(client: Client, message: Message):
 
 @StreamBot.on_message(
     filters.private & filters.user(list(Var.OWNER_ID)) & filters.text
-    & ~filters.command(['batch', 'fwd', 'start', 'gen', 'users', 'broadcast', 'ping'])
+    & ~filters.command(['batch', 'fbatch', 'fwd', 'start', 'gen', 'users', 'broadcast', 'ping'])
 )
 async def batch_conversation_handler(client: Client, message: Message):
     user_id = message.from_user.id
-    session = _batch_sessions.get(user_id)
-    if not session:
+
+    # ── /batch state machine ──────────────────────────────────────────────────
+    batch_session = _batch_sessions.get(user_id)
+    if batch_session:
+        if batch_session['state'] == 'waiting_folder':
+            folder_path = message.text.strip()
+            github_dest_folder = f"{GITHUB_OWNER_REPO}/{folder_path}"
+            _batch_sessions[user_id] = {
+                'state': 'waiting_links',
+                'data': {'github_dest_folder': github_dest_folder}
+            }
+            await message.reply_text(
+                "📝 Send the links with subjects in this format:\n\n"
+                "ANATOMY\n"
+                "F - https://t.me/c/2024354927/237364\n"
+                "L - https://t.me/c/2024354927/237366\n\n"
+                "BIOCHEMISTRY\n"
+                "F - https://t.me/c/2024354927/237460\n"
+                "L - https://t.me/c/2024354927/237462\n\n"
+                "Each subject should have F (first) and L (last) message links."
+            )
+        elif batch_session['state'] == 'waiting_links':
+            github_dest_folder = batch_session['data']['github_dest_folder']
+            del _batch_sessions[user_id]
+            await _run_batch_processing(client, message, github_dest_folder)
         return
 
-    if session['state'] == 'waiting_folder':
-        folder_path = message.text.strip()
-        github_dest_folder = f"{GITHUB_OWNER_REPO}/{folder_path}"
-        _batch_sessions[user_id] = {
-            'state': 'waiting_links',
-            'data': {'github_dest_folder': github_dest_folder}
-        }
-        await message.reply_text(
-            "📝 Send the links with subjects in this format:\n\n"
-            "ANATOMY\n"
-            "F - https://t.me/c/2024354927/237364\n"
-            "L - https://t.me/c/2024354927/237366\n\n"
-            "BIOCHEMISTRY\n"
-            "F - https://t.me/c/2024354927/237460\n"
-            "L - https://t.me/c/2024354927/237462\n\n"
-            "Each subject should have F (first) and L (last) message links."
-        )
-
-    elif session['state'] == 'waiting_links':
-        github_dest_folder = session['data']['github_dest_folder']
-        del _batch_sessions[user_id]
-        await _run_batch_processing(client, message, github_dest_folder)
+    # ── /fbatch state machine ─────────────────────────────────────────────────
+    fbatch_session = _fbatch_sessions.get(user_id)
+    if fbatch_session:
+        if fbatch_session['state'] == 'waiting_range':
+            del _fbatch_sessions[user_id]
+            await _run_fbatch_scan(client, message)
+        return
 
 
 async def _run_batch_processing(client: Client, message: Message, github_dest_folder: str):
@@ -1210,17 +1222,278 @@ async def _run_batch_processing(client: Client, message: Message, github_dest_fo
         await message.reply(f"❌ Fatal error: {type(e).__name__}: {e}")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  /fbatch — Forum supergroup topic scanner
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _raw_chat(chat_id: int) -> str:
+    """Convert -1002932205861 → '2932205861' for t.me URL building."""
+    s = str(abs(chat_id))
+    return s[3:] if s.startswith("100") else s
+
+
+def _supergroup_msg_url(chat_id: int, topic_id: int, msg_id: int) -> str:
+    return f"https://t.me/c/{_raw_chat(chat_id)}/{topic_id}/{msg_id}"
+
+
+def _get_topic_id_from_msg(msg) -> "int | None":
+    """Extract forum topic ID from a Pyrogram/pyrofork Message.
+    Tries all known attribute paths across builds."""
+    if getattr(msg, "forum_topic_created", None) is not None:
+        return msg.id
+    for attr in ("reply_to_top_message_id", "message_thread_id"):
+        tid = getattr(msg, attr, None)
+        if tid:
+            return int(tid)
+    reply_to = getattr(msg, "reply_to", None)
+    if reply_to:
+        for attr in ("reply_to_top_id", "reply_to_msg_id"):
+            tid = getattr(reply_to, attr, None)
+            if tid:
+                return int(tid)
+    return None
+
+
+def _parse_fbatch_range(raw: str):
+    """Parse 'START_LINK-END_LINK' input where links are supergroup t.me links.
+    
+    START/END format: https://t.me/c/CHAT_ID/TOPIC_ID/MSG_ID
+    Separator: '-' that appears directly before 'https'
+    
+    Returns (chat_id, start_topic_id, start_msg_id, end_topic_id, end_msg_id) or None.
+    """
+    raw = raw.strip()
+    parts = re.split(r'-(?=https?://)', raw, maxsplit=1)
+    if len(parts) != 2:
+        return None
+    start_link, end_link = parts[0].strip(), parts[1].strip()
+    pat = r"https?://t\.me/c/(\d+)/(\d+)/(\d+)"
+    ms = re.match(pat, start_link)
+    me = re.match(pat, end_link)
+    if not ms or not me:
+        return None
+    chat_id = int(f"-100{ms.group(1)}")
+    return chat_id, int(ms.group(2)), int(ms.group(3)), int(me.group(2)), int(me.group(3))
+
+
+async def _scan_forum_topics(client: Client, chat_id: int, scan_start: int, scan_end: int, status_msg) -> "dict[int, dict]":
+    """Fetch all messages in [scan_start, scan_end], group by topic ID.
+    Returns { topic_id: {'min': int, 'max': int, 'name': None} }."""
+    topics: dict = {}
+    total = scan_end - scan_start + 1
+    done = 0
+    last_pct = -10
+
+    for chunk_start in range(scan_start, scan_end + 1, _FBATCH_CHUNK):
+        ids = list(range(chunk_start, min(chunk_start + _FBATCH_CHUNK, scan_end + 1)))
+        try:
+            msgs = await client.get_messages(chat_id, ids)
+            if not isinstance(msgs, list):
+                msgs = [msgs]
+        except FloodWait as e:
+            await asyncio.sleep(e.value + 1)
+            try:
+                msgs = await client.get_messages(chat_id, ids)
+                if not isinstance(msgs, list):
+                    msgs = [msgs]
+            except Exception:
+                msgs = []
+        except Exception as exc:
+            logging.warning(f"fbatch get_messages error: {exc}")
+            await asyncio.sleep(1.5)
+            msgs = []
+
+        for msg in msgs:
+            if msg is None or getattr(msg, "empty", True):
+                continue
+            if getattr(msg, "forum_topic_created", None) is not None:
+                continue
+            tid = _get_topic_id_from_msg(msg)
+            if tid is None:
+                continue
+            mid = msg.id
+            if tid not in topics:
+                topics[tid] = {"min": mid, "max": mid, "name": None}
+            else:
+                if mid < topics[tid]["min"]:
+                    topics[tid]["min"] = mid
+                if mid > topics[tid]["max"]:
+                    topics[tid]["max"] = mid
+
+        done += len(ids)
+        pct = done * 100 // total
+        if pct >= last_pct + 10:
+            last_pct = pct
+            try:
+                await status_msg.edit_text(
+                    f"🔍 Scanning… {pct}% ({done}/{total} IDs)\n"
+                    f"Topics found so far: {len(topics)}"
+                )
+            except Exception:
+                pass
+        await asyncio.sleep(_FBATCH_DELAY)
+
+    return topics
+
+
+async def _fetch_topic_names(client: Client, chat_id: int, topics: dict) -> None:
+    """Fetch topic title by reading the topic-header service message for each topic."""
+    for tid in list(topics.keys()):
+        try:
+            msg = await client.get_messages(chat_id, tid)
+            if msg and not getattr(msg, "empty", True):
+                ftc = getattr(msg, "forum_topic_created", None)
+                if ftc:
+                    name = getattr(ftc, "name", None) or getattr(ftc, "title", None)
+                    if name:
+                        topics[tid]["name"] = name
+        except Exception:
+            pass
+        await asyncio.sleep(0.2)
+
+
+@StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('fbatch'))
+async def fbatch_command(client: Client, message: Message):
+    user_id = message.from_user.id
+    _fbatch_sessions[user_id] = {'state': 'waiting_range'}
+    await message.reply_text(
+        "📋 Forum Topic Scanner\n\n"
+        "Send the start–end link range to scan:\n\n"
+        "Format: START_LINK-END_LINK\n\n"
+        "Example:\n"
+        "https://t.me/c/2932205861/116/117-https://t.me/c/2932205861/1040/1642"
+    )
+
+
+async def _run_fbatch_scan(client: Client, message: Message):
+    """Core logic: parse range → scan messages → build topic map → send result."""
+    raw = message.text.strip()
+
+    parsed = _parse_fbatch_range(raw)
+    if not parsed:
+        await message.reply_text(
+            "❌ Could not parse that link range.\n\n"
+            "Use the format:\n"
+            "https://t.me/c/CHATID/TOPIC/MSGID-https://t.me/c/CHATID/TOPIC2/MSGID2"
+        )
+        return
+
+    chat_id, start_topic, scan_start, end_topic, scan_end = parsed
+
+    if scan_end < scan_start:
+        await message.reply_text("❌ End message ID must be ≥ start message ID.")
+        return
+
+    total_ids = scan_end - scan_start + 1
+    status_msg = await message.reply_text(
+        f"🔍 Forum Topic Scanner started\n\n"
+        f"Chat: -100{_raw_chat(chat_id)}\n"
+        f"Range: {scan_start} → {scan_end} ({total_ids} IDs)\n\n"
+        f"⏳ Scanning…"
+    )
+
+    try:
+        topics = await _scan_forum_topics(client, chat_id, scan_start, scan_end, status_msg)
+    except Exception as exc:
+        logging.error(f"fbatch scan error: {exc}", exc_info=True)
+        await status_msg.edit_text(f"❌ Scan failed: {type(exc).__name__}: {exc}")
+        return
+
+    if not topics:
+        await status_msg.edit_text(
+            f"⚠️ No forum topics found in range {scan_start} → {scan_end}.\n\n"
+            "• Confirm the bot/account can read this supergroup.\n"
+            "• Confirm Topics are enabled in the group.\n"
+            "• All messages in range may be deleted."
+        )
+        return
+
+    try:
+        await status_msg.edit_text(
+            f"✅ Found {len(topics)} topic(s) — fetching names…"
+        )
+        await _fetch_topic_names(client, chat_id, topics)
+    except Exception as exc:
+        logging.warning(f"fbatch name fetch error: {exc}")
+
+    # Build output text — one block per topic, sorted by topic ID
+    header = (
+        f"✅ {len(topics)} topics found in range {scan_start} → {scan_end}\n"
+        f"{'─' * 50}\n\n"
+    )
+    topic_lines = []
+    for tid in sorted(topics.keys()):
+        info = topics[tid]
+        name = info["name"] or f"Topic {tid}"
+        f_link = _supergroup_msg_url(chat_id, tid, info["min"])
+        l_link = _supergroup_msg_url(chat_id, tid, info["max"])
+        topic_lines.append(
+            f"{name}\n"
+            f"F - {f_link}\n"
+            f"L - {l_link}"
+        )
+
+    full_text = header + "\n\n".join(topic_lines)
+
+    # Send as .txt file (always, since results can be long)
+    import tempfile, os as _os
+    tmp_path = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(suffix=".txt", prefix="fbatch_")
+        _os.close(fd)
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(full_text)
+        caption = f"✅ {len(topics)} topics found in range {scan_start} → {scan_end}"
+        await client.send_document(
+            chat_id=message.chat.id,
+            document=tmp_path,
+            caption=caption,
+            file_name=f"topics_{_raw_chat(chat_id)}_{scan_start}_{scan_end}.txt"
+        )
+    except Exception as exc:
+        logging.error(f"fbatch send file error: {exc}")
+        await message.reply_text(f"❌ Could not send result file: {exc}")
+    finally:
+        if tmp_path and _os.path.exists(tmp_path):
+            try:
+                _os.remove(tmp_path)
+            except Exception:
+                pass
+
+    # Also send as plain text if short enough for Telegram message
+    if len(full_text) <= 4000:
+        await message.reply_text(full_text, disable_web_page_preview=True)
+
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 def parse_tme_link(link: str):
-    """Parse a t.me/c/CHANNEL_ID/MSG_ID link.
-    Returns (chat_id_int, msg_id_int) or raises ValueError."""
+    """Parse a t.me/c link — supports both channel and supergroup (topic) links.
+    
+    Channel:    https://t.me/c/CHAT_ID/MSG_ID          → (chat_id, msg_id)
+    Supergroup: https://t.me/c/CHAT_ID/TOPIC_ID/MSG_ID → (chat_id, msg_id)
+
+    Returns (chat_id_int, msg_id_int) or raises ValueError.
+    """
     link = link.strip()
-    pattern = r"https?://t\.me/c/(\d+)/(\d+)"
-    m = re.match(pattern, link)
-    if not m:
-        raise ValueError(f"Cannot parse link: {link}")
-    chat_id = int(f"-100{m.group(1)}")
-    msg_id = int(m.group(2))
-    return chat_id, msg_id
+    # 3-part path first (supergroup with topic): CHAT/TOPIC/MSG
+    m3 = re.match(r"https?://t\.me/c/(\d+)/(\d+)/(\d+)", link)
+    if m3:
+        chat_id = int(f"-100{m3.group(1)}")
+        msg_id = int(m3.group(3))
+        return chat_id, msg_id
+    # 2-part path (regular channel): CHAT/MSG
+    m2 = re.match(r"https?://t\.me/c/(\d+)/(\d+)", link)
+    if m2:
+        chat_id = int(f"-100{m2.group(1)}")
+        msg_id = int(m2.group(2))
+        return chat_id, msg_id
+    raise ValueError(f"Cannot parse link: {link}")
 
 
 def db_channel_short_id(db_channel: int) -> str:
