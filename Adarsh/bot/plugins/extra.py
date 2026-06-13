@@ -47,7 +47,7 @@ async def stats(bot, update):
     await update.reply_text(botstats)
 
 
-@StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('checkenv'))
+@StreamBot.on_message(filters.private & filters.user(list(Var.ADMIN_IDS)) & filters.command('checkenv'))
 async def checkenv(bot, message):
     """Diagnose the server environment — ffmpeg, tokens, Python path."""
     lines = ["<b>🔍 Environment Check</b>\n"]
