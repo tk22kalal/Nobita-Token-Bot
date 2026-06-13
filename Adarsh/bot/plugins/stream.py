@@ -927,7 +927,7 @@ async def upload_to_github(file_content: str, file_path: str, commit_message: st
     except Exception as e:
         return False, f"Exception during upload: {type(e).__name__}: {e}"
 
-@StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('batch'))
+@StreamBot.on_message(filters.private & filters.user(list(Var.ADMIN_IDS)) & filters.command('batch'))
 async def batch_command(client: Client, message: Message):
     user_id = message.from_user.id
     # Clear any previous session and start fresh
@@ -941,7 +941,7 @@ async def batch_command(client: Client, message: Message):
 
 
 @StreamBot.on_message(
-    filters.private & filters.user(list(Var.OWNER_ID)) & filters.text
+    filters.private & filters.user(list(Var.ADMIN_IDS)) & filters.text
     & ~filters.command(['batch', 'fbatch', 'fwd', 'start', 'gen', 'users', 'broadcast', 'ping'])
 )
 async def batch_conversation_handler(client: Client, message: Message):
@@ -1490,7 +1490,7 @@ async def _fetch_topic_names(client: Client, chat_id: int, topics: dict) -> None
         await asyncio.sleep(0.2)
 
 
-@StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('fbatch'))
+@StreamBot.on_message(filters.private & filters.user(list(Var.ADMIN_IDS)) & filters.command('fbatch'))
 async def fbatch_command(client: Client, message: Message):
     user_id = message.from_user.id
     _fbatch_sessions[user_id] = {'state': 'waiting_range'}
@@ -1681,7 +1681,7 @@ def db_channel_short_id(db_channel: int) -> str:
     return s.lstrip("-")
 
 
-@StreamBot.on_message(filters.private & filters.user(list(Var.OWNER_ID)) & filters.command('fwd'))
+@StreamBot.on_message(filters.private & filters.user(list(Var.ADMIN_IDS)) & filters.command('fwd'))
 async def fwd_command(client: Client, message: Message):
     """Forward messages from a source channel to the DB channel and return new F/L links."""
     try:
