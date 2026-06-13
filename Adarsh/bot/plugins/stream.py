@@ -1330,133 +1330,147 @@ async def _scan_forum_topics(
     topics: dict = {}
     valid_topic_ids: set = set()
 
-    # ── Phase 1: discover topic IDs from topic-creation service messages ──────
+    # ─────────────────────────────────────────────────────────────────────────
+    # IMPORTANT: get_messages(chat_id, [ids]) does NOT populate
+    # forum_topic_created or reply_to_top_message_id in pyrofork when fetching
+    # by specific ID list.  get_chat_history() returns all message types with
+    # full attributes, so we use it for both phases.
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # ── Phase 1: use get_chat_history to find topic-creation service messages ─
     try:
         await status_msg.edit_text(
-            f"🔍 Phase 1/2 — discovering topics in range {start_topic} → {end_topic}…"
+            f"🔍 Phase 1/2 — discovering topics {start_topic} → {end_topic}…"
         )
     except Exception:
         pass
 
     phase1_end = max(end_topic, scan_end)
-    for chunk_start in range(start_topic, phase1_end + 1, _FBATCH_CHUNK):
-        ids = list(range(chunk_start, min(chunk_start + _FBATCH_CHUNK, phase1_end + 1)))
-        try:
-            msgs = await client.get_messages(chat_id, ids)
-            if not isinstance(msgs, list):
-                msgs = [msgs]
-        except FloodWait as fw:
-            await asyncio.sleep(fw.value + 1)
-            try:
-                msgs = await client.get_messages(chat_id, ids)
-                if not isinstance(msgs, list):
-                    msgs = [msgs]
-            except Exception:
-                msgs = []
-        except Exception as exc:
-            logging.warning(f"fbatch phase1 get_messages error: {exc}")
-            await asyncio.sleep(1.5)
-            msgs = []
+    phase1_limit = phase1_end - start_topic + 100
 
-        for msg in msgs:
-            if msg is None or getattr(msg, "empty", True):
-                continue
-            if getattr(msg, "forum_topic_created", None) is not None:
-                # The message ID of a topic-creation service message IS the topic ID
-                if start_topic <= msg.id <= end_topic:
-                    valid_topic_ids.add(msg.id)
-                    topics[msg.id] = {"min": None, "max": None, "name": None}
-
-        await asyncio.sleep(_FBATCH_DELAY)
+    try:
+        async for msg in client.get_chat_history(
+            chat_id, limit=phase1_limit, offset_id=phase1_end + 1
+        ):
+            if msg.id < start_topic:
+                break
+            # topic-creation service messages: their .id IS the topic ID
+            is_topic_creation = (
+                getattr(msg, "forum_topic_created", None) is not None
+                or getattr(msg, "new_forum_topic", None) is not None
+            )
+            if is_topic_creation and start_topic <= msg.id <= end_topic:
+                valid_topic_ids.add(msg.id)
+                topics[msg.id] = {"min": None, "max": None, "name": None}
+    except Exception as exc:
+        logging.warning(f"fbatch phase1 get_chat_history error: {exc}")
 
     if not valid_topic_ids:
-        logging.warning("fbatch: no topic-creation messages found in range; "
-                        "falling back to scanning all messages and grouping by reply_to")
+        logging.warning("fbatch: no topic-creation messages found in phase1; "
+                        "phase2 will use reply_to range-filter as fallback")
 
-    # ── Phase 2: scan wider range to collect first/last content msg per topic ─
-    # Determine upper bound for the wide scan
+    # ── Phase 2: scan wide range via get_chat_history, collect first/last msg ─
     latest_id = await _get_chat_latest_msg_id(client, chat_id)
     if latest_id <= 0:
-        # Fallback: scan up to 3000 IDs beyond the given end
         latest_id = scan_end + 3000
 
     wide_start = min(start_topic, scan_start)
-    wide_end = max(scan_end, latest_id)
-
-    total = wide_end - wide_start + 1
-    done = 0
-    last_pct = -10
+    wide_end   = max(scan_end, latest_id)
 
     try:
         await status_msg.edit_text(
-            f"🔍 Phase 2/2 — scanning messages {wide_start} → {wide_end} "
-            f"({total} IDs) for {len(valid_topic_ids)} topic(s)…"
+            f"🔍 Phase 2/2 — scanning {wide_start}→{wide_end} "
+            f"for {len(valid_topic_ids) or '?'} topic(s)…"
         )
     except Exception:
         pass
 
-    for chunk_start in range(wide_start, wide_end + 1, _FBATCH_CHUNK):
-        ids = list(range(chunk_start, min(chunk_start + _FBATCH_CHUNK, wide_end + 1)))
+    # Iterate newest→oldest in chunks via get_chat_history
+    offset_id = wide_end + 1
+    processed = 0
+    total_est = max(1, wide_end - wide_start + 1)
+    last_pct  = -10
+
+    while offset_id > wide_start:
+        batch = []
         try:
-            msgs = await client.get_messages(chat_id, ids)
-            if not isinstance(msgs, list):
-                msgs = [msgs]
+            async for msg in client.get_chat_history(
+                chat_id, limit=_FBATCH_CHUNK, offset_id=offset_id
+            ):
+                batch.append(msg)
+                if msg.id <= wide_start:
+                    break
         except FloodWait as fw:
             await asyncio.sleep(fw.value + 1)
-            try:
-                msgs = await client.get_messages(chat_id, ids)
-                if not isinstance(msgs, list):
-                    msgs = [msgs]
-            except Exception:
-                msgs = []
+            continue
         except Exception as exc:
-            logging.warning(f"fbatch phase2 get_messages error: {exc}")
-            await asyncio.sleep(1.5)
-            msgs = []
+            logging.warning(f"fbatch phase2 get_chat_history error: {exc}")
+            break
 
-        for msg in msgs:
-            if msg is None or getattr(msg, "empty", True):
+        if not batch:
+            break
+
+        for msg in batch:
+            if msg.id < wide_start:
                 continue
-            # Skip topic-creation service messages (they have no content)
-            if getattr(msg, "forum_topic_created", None) is not None:
+
+            # Skip topic-creation service messages (no content)
+            if (getattr(msg, "forum_topic_created", None) is not None
+                    or getattr(msg, "new_forum_topic", None) is not None):
+                continue
+
+            # Skip other service/empty messages that carry no media or text
+            has_content = bool(
+                msg.text or msg.media or msg.document or msg.video
+                or msg.audio or msg.photo or msg.voice
+                or msg.video_note or msg.sticker or msg.animation
+            )
+            if not has_content:
                 continue
 
             tid = _get_topic_id_from_msg(msg)
             if tid is None:
                 continue
 
-            # If Phase 1 found explicit topics, filter to only those
-            if valid_topic_ids and tid not in valid_topic_ids:
-                continue
-
-            # If no explicit topics found (fallback mode), filter to range
-            if not valid_topic_ids and not (start_topic <= tid <= end_topic):
-                continue
+            # Filter: Phase-1 topics take priority
+            if valid_topic_ids:
+                if tid not in valid_topic_ids:
+                    continue
+            else:
+                # Fallback: accept any topic whose ID falls in [start, end]
+                if not (start_topic <= tid <= end_topic):
+                    continue
 
             mid = msg.id
             if tid not in topics:
                 topics[tid] = {"min": mid, "max": mid, "name": None}
             else:
-                if topics[tid]["min"] is None or mid < topics[tid]["min"]:
+                if mid < topics[tid]["min"]:
                     topics[tid]["min"] = mid
-                if topics[tid]["max"] is None or mid > topics[tid]["max"]:
+                if mid > topics[tid]["max"]:
                     topics[tid]["max"] = mid
 
-        done += len(ids)
-        pct = done * 100 // total
+        processed += len(batch)
+        pct = min(99, processed * 100 // total_est)
         if pct >= last_pct + 10:
             last_pct = pct
             active = sum(1 for v in topics.values() if v["min"] is not None)
             try:
                 await status_msg.edit_text(
-                    f"🔍 Phase 2/2 — {pct}% ({done}/{total} IDs)\n"
-                    f"Topics with content: {active} / {len(valid_topic_ids) or '?'}"
+                    f"🔍 Phase 2/2 — {pct}% (~{processed} msgs)\n"
+                    f"Topics with content: {active}"
                 )
             except Exception:
                 pass
+
+        # Move the window: next batch starts just below the oldest msg in this batch
+        oldest_id = batch[-1].id
+        if oldest_id <= wide_start:
+            break
+        offset_id = oldest_id
         await asyncio.sleep(_FBATCH_DELAY)
 
-    # Drop topics for which no content messages were found
+    # Drop any topic entries where no content message was found
     return {tid: info for tid, info in topics.items() if info["min"] is not None}
 
 
@@ -1747,13 +1761,35 @@ async def fwd_command(client: Client, message: Message):
                 fwd_last_id = None
                 forwarded_count = 0
                 failed_count = 0
-                first_error = None  # capture first real error for display
+                skipped_count = 0   # service/empty messages — not a real failure
+                first_error = None
 
                 # Forward one message at a time — batch forwarding fails entirely
                 # if any single message in the batch is missing/deleted.
                 for msg_id in range(start_id, end_id + 1):
                     try:
-                        # copy_message sends content without any "forwarded from" header
+                        # ── Pre-fetch to detect and skip service/empty messages ──
+                        src_msg = await client.get_messages(src_chat_id, msg_id)
+
+                        if src_msg is None or getattr(src_msg, 'empty', True):
+                            skipped_count += 1
+                            await asyncio.sleep(0.2)
+                            continue
+
+                        # Service messages (topic creation, pinned, etc.) can't be
+                        # copied — skip silently so they don't pollute failed_count
+                        has_content = bool(
+                            src_msg.text or src_msg.media or src_msg.document
+                            or src_msg.video or src_msg.audio or src_msg.photo
+                            or src_msg.voice or src_msg.video_note
+                            or src_msg.sticker or src_msg.animation
+                        )
+                        if not has_content:
+                            skipped_count += 1
+                            await asyncio.sleep(0.2)
+                            continue
+
+                        # ── Copy the message to DB channel ──────────────────────
                         copied = await client.copy_message(
                             chat_id=Var.DB_CHANNEL,
                             from_chat_id=src_chat_id,
@@ -1766,6 +1802,13 @@ async def fwd_command(client: Client, message: Message):
                             if fwd_last_id is None or copied.id > fwd_last_id:
                                 fwd_last_id = copied.id
                             forwarded_count += 1
+                        else:
+                            # copy_message returned but no valid ID — treat as failure
+                            err_str = f"copy_message returned no ID for msg {msg_id}"
+                            logging.warning(err_str)
+                            if first_error is None:
+                                first_error = err_str
+                            failed_count += 1
 
                         await asyncio.sleep(0.3)
 
@@ -1799,8 +1842,10 @@ async def fwd_command(client: Client, message: Message):
                     # Update status every 20 messages
                     if (msg_id - start_id + 1) % 20 == 0:
                         await status_msg.edit_text(
-                            f"📤 {subject_name}: {forwarded_count} forwarded, {failed_count} failed\n"
-                            f"Progress: msg {msg_id - start_id + 1}/{total} | Subject {idx}/{len(subjects_data)}"
+                            f"📤 {subject_name}: {forwarded_count} copied, "
+                            f"{skipped_count} skipped, {failed_count} failed\n"
+                            f"Progress: {msg_id - start_id + 1}/{total} | "
+                            f"Subject {idx}/{len(subjects_data)}"
                         )
 
                 if fwd_first_id and fwd_last_id:
@@ -1813,17 +1858,29 @@ async def fwd_command(client: Client, message: Message):
                     )
                     await status_msg.edit_text(
                         f"✅ {subject_name} done!\n"
-                        f"Forwarded: {forwarded_count} | Failed: {failed_count}\n"
+                        f"Copied: {forwarded_count} | Skipped: {skipped_count} | Failed: {failed_count}\n"
                         f"F - {f_link}\n"
                         f"L - {l_link}\n\n"
                         f"Progress: {idx}/{len(subjects_data)}"
                     )
                 else:
-                    error_hint = f"\n🔍 Error: {first_error}" if first_error else "\n🔍 No error captured — bot may lack access to source channel, or messages are empty/service messages."
-                    result_lines.append(f"{subject_name}\n❌ No messages forwarded successfully{error_hint}")
+                    if first_error:
+                        error_hint = f"\n🔍 Error: {first_error}"
+                    elif skipped_count == total:
+                        error_hint = (
+                            f"\n🔍 All {skipped_count} messages were service/empty messages "
+                            f"(topic creation, pinned notices, etc.) — no media to forward.\n"
+                            f"Use the correct F/L links pointing to actual media messages."
+                        )
+                    else:
+                        error_hint = (
+                            f"\n🔍 {skipped_count} skipped (service msgs), "
+                            f"{failed_count} failed — check bot permissions in source chat."
+                        )
+                    result_lines.append(f"{subject_name}\n❌ No messages forwarded{error_hint}")
                     await status_msg.edit_text(
                         f"❌ {subject_name}: nothing forwarded\n"
-                        f"Attempted: {total} messages | Failed: {failed_count}"
+                        f"Attempted: {total} | Skipped: {skipped_count} | Failed: {failed_count}"
                         f"{error_hint}\n\n"
                         f"Progress: {idx}/{len(subjects_data)}"
                     )
