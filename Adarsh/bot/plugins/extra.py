@@ -100,9 +100,15 @@ async def checkenv(bot, message):
     await message.reply_text("\n".join(lines), parse_mode="html")
 
 
-@StreamBot.on_message(filters.private & filters.user(list(Var.ADMIN_IDS)) & filters.command('root'))
+@StreamBot.on_message(filters.private & filters.command('root'))
 async def root_command(bot, message):
     """Send the GitHub file index link to the requesting admin."""
+    user_id = message.from_user.id
+    # Check admin inline — safer than filters.user() when ADMIN_IDS may be empty at import time
+    admin_ids = getattr(Var, 'ADMIN_IDS', set()) or getattr(Var, 'OWNER_ID', set())
+    if not admin_ids or user_id not in admin_ids:
+        return  # silently ignore non-admins
+
     base_url = Var.URL.rstrip('/')
     tree_url = f"{base_url}/root-tree"
     await message.reply_text(
