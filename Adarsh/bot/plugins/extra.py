@@ -115,7 +115,7 @@ async def root_command(bot, message):
         "👋 Hi Admin!\n\n"
         "📁 Tap the button below to browse the file index.\n"
         "Folders are expandable — click any folder to open it.\n"
-        "HTML files are listed without the .html extension.",
+        "Files are listed without the .vps extension.",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("📂 Open File Index", web_app=WebAppInfo(url=tree_url))
         ]]),
