@@ -942,7 +942,7 @@ async def batch_command(client: Client, message: Message):
 
 @StreamBot.on_message(
     filters.private & filters.user(list(Var.ADMIN_IDS)) & filters.text
-    & ~filters.command(['batch', 'fbatch', 'fwd', 'start', 'gen', 'users', 'broadcast', 'ping'])
+    & ~filters.command(['batch', 'fbatch', 'fwd', 'start', 'gen', 'users', 'broadcast', 'ping', 'root', 'checkenv'])
 )
 async def batch_conversation_handler(client: Client, message: Message):
     user_id = message.from_user.id
