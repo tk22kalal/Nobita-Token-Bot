@@ -98,3 +98,20 @@ async def checkenv(bot, message):
     lines.append(f"🌐 <b>PORT:</b> <code>{port}</code>")
 
     await message.reply_text("\n".join(lines), parse_mode="html")
+
+
+@StreamBot.on_message(filters.private & filters.user(list(Var.ADMIN_IDS)) & filters.command('root'))
+async def root_command(bot, message):
+    """Send the GitHub file index link to the requesting admin."""
+    base_url = Var.URL.rstrip('/')
+    tree_url = f"{base_url}/root-tree"
+    await message.reply_text(
+        "👋 Hi Admin!\n\n"
+        "📁 Tap the button below to browse the file index.\n"
+        "Folders are expandable — click any folder to open it.\n"
+        "HTML files are listed without the .html extension.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("📂 Open File Index", url=tree_url)
+        ]]),
+        quote=True
+    )
