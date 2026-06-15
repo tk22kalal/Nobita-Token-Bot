@@ -114,10 +114,10 @@ async def root_command(bot, message):
     await message.reply_text(
         "👋 Hi Admin!\n\n"
         "📁 Tap the button below to browse the file index.\n"
-        "Folders are expandable — click any folder to open it.\n"
+        "Folders are collapsible — click any folder to expand it.\n"
         "HTML files are listed without the .html extension.",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("📂 Open File Index", url=tree_url)
+            InlineKeyboardButton("📂 Open File Index", web_app_url=tree_url)
         ]]),
         quote=True
     )
