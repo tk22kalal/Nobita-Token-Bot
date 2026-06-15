@@ -702,7 +702,6 @@ details[open]>summary .arr{{transform:rotate(90deg)}}
 </head>
 <body>
 <h1>📁 {_ROOT_FOLDER}</h1>
-<p class="meta">Repo: {_ROOT_REPO} &nbsp;·&nbsp; Fetched: {ts}</p>
 {trunc_warn}
 <div class="tree">
 {tree_html}
