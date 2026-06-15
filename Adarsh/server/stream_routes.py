@@ -607,7 +607,7 @@ def _render_tree_html(node: dict, depth: int = 0) -> str:
         cnt = _count(children)
         badge = f'<span class="badge">{cnt}</span>' if cnt else ""
         inner = _render_tree_html(children, depth + 1)
-        open_attr = " open" if depth == 0 else ""
+        open_attr = ""
         html += (
             f'<details{open_attr}>'
             f'<summary><span class="arr">▶</span>📁 {name} {badge}</summary>'
