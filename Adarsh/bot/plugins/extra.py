@@ -4,7 +4,7 @@ import shutil
 import psutil
 import asyncio
 from Adarsh.bot import StreamBot
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from pyrogram import filters
 from utils_bot import *
 from Adarsh import StartTime
@@ -114,10 +114,10 @@ async def root_command(bot, message):
     await message.reply_text(
         "👋 Hi Admin!\n\n"
         "📁 Tap the button below to browse the file index.\n"
-        "Folders are collapsible — click any folder to expand it.\n"
+        "Folders are expandable — click any folder to open it.\n"
         "HTML files are listed without the .html extension.",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("📂 Open File Index", web_app_url=tree_url)
+            InlineKeyboardButton("📂 Open File Index", web_app=WebAppInfo(url=tree_url))
         ]]),
         quote=True
     )
