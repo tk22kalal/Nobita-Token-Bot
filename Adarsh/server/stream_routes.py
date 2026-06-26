@@ -469,54 +469,36 @@ async def media_handler(request: web.Request):
 
 class_cache = {}
 
+_LOG_MSG_ID = 1118050  # Only this message gets verbose INFO logging; others use DEBUG
+
 async def media_streamer(request: web.Request, id: int, secure_hash: str):
     req_start = time.monotonic()
-    client_ip = request.headers.get("X-Forwarded-For", request.remote or "unknown").split(",")[0].strip()
-    user_agent = request.headers.get("User-Agent", "unknown")[:120]
+    _log = stream_log.info if id == _LOG_MSG_ID else stream_log.debug
     range_header = request.headers.get("Range", 0)
     is_download = request.query.get("download") == "1"
 
-    stream_log.info(
-        f"[MSG={id}] ▶ REQUEST — ip={client_ip} "
-        f"range={range_header!r} download={is_download} "
-        f"ua={user_agent!r}"
-    )
+    _log(f"[MSG={id}] ▶ REQUEST range={range_header!r} download={is_download}")
 
     # ── Client selection ─────────────────────────────────────────────────────
     index = min(work_loads, key=work_loads.get)
     faster_client = multi_clients[index]
-
-    current_loads = {k: v for k, v in work_loads.items()}
-    stream_log.info(
-        f"[MSG={id}] Client selected: index={index} "
-        f"all_loads={current_loads} total_clients={len(multi_clients)}"
-    )
+    _log(f"[MSG={id}] Client selected: index={index} loads={dict(work_loads)}")
 
     if faster_client in class_cache:
         tg_connect = class_cache[faster_client]
-        stream_log.debug(f"[MSG={id}] Reusing cached ByteStreamer for client {index}")
     else:
-        stream_log.info(f"[MSG={id}] Creating new ByteStreamer for client {index}")
         tg_connect = ByteStreamer(faster_client)
         class_cache[faster_client] = tg_connect
 
     # ── File properties ──────────────────────────────────────────────────────
-    t0 = time.monotonic()
     file_id = await tg_connect.get_file_properties(id)
-    prop_ms = (time.monotonic() - t0) * 1000
-    stream_log.info(
-        f"[MSG={id}] File properties resolved in {prop_ms:.0f}ms — "
-        f"dc_id={file_id.dc_id} file_size={file_id.file_size} "
-        f"mime={getattr(file_id, 'mime_type', 'unknown')} "
-        f"file_name={getattr(file_id, 'file_name', 'unknown')}"
+    _log(
+        f"[MSG={id}] File: dc_id={file_id.dc_id} size={file_id.file_size} "
+        f"mime={getattr(file_id, 'mime_type', '?')} name={getattr(file_id, 'file_name', '?')}"
     )
 
     if file_id.unique_id[:6] != secure_hash:
-        stream_log.warning(
-            f"[MSG={id}] ❌ Hash mismatch — "
-            f"expected={secure_hash!r} got={file_id.unique_id[:6]!r} "
-            f"[CAUSE: link tampered or wrong hash]"
-        )
+        stream_log.warning(f"[MSG={id}] ❌ Hash mismatch expected={secure_hash!r} got={file_id.unique_id[:6]!r}")
         raise InvalidHash
 
     file_size = file_id.file_size
@@ -529,31 +511,15 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
             from_bytes = int(from_bytes_str)
             until_bytes = int(until_bytes_str) if until_bytes_str else file_size - 1
         except Exception as e:
-            stream_log.error(
-                f"[MSG={id}] ❌ Malformed Range header {range_header!r}: {e} "
-                f"[CAUSE: client sent invalid range — browser bug or unusual player]"
-            )
+            stream_log.error(f"[MSG={id}] ❌ Malformed Range header {range_header!r}: {e}")
             return web.Response(status=400, body=f"Bad Range header: {range_header}")
     else:
         from_bytes = request.http_range.start or 0
         until_bytes = (request.http_range.stop or file_size) - 1
 
-    if file_size > 0:
-        pct_info = f"pct_start={from_bytes/file_size*100:.1f}% pct_end={until_bytes/file_size*100:.1f}%"
-    else:
-        pct_info = "pct=N/A(file_size=0)"
-    stream_log.info(
-        f"[MSG={id}] Range parsed — from={from_bytes} until={until_bytes} "
-        f"file_size={file_size} {pct_info}"
-    )
-
     # ── Range validation ─────────────────────────────────────────────────────
     if (until_bytes > file_size) or (from_bytes < 0) or (until_bytes < from_bytes):
-        stream_log.warning(
-            f"[MSG={id}] ❌ Range not satisfiable — "
-            f"from={from_bytes} until={until_bytes} file_size={file_size} "
-            f"[CAUSE: player requested bytes outside file bounds]"
-        )
+        stream_log.warning(f"[MSG={id}] ❌ Range not satisfiable from={from_bytes} until={until_bytes} size={file_size}")
         return web.Response(
             status=416,
             body="416: Range not satisfiable",
@@ -569,10 +535,9 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
     req_length = until_bytes - from_bytes + 1
     part_count = math.ceil(until_bytes / chunk_size) - math.floor(offset / chunk_size)
 
-    stream_log.info(
-        f"[MSG={id}] Chunk math — offset={offset} first_cut={first_part_cut} "
-        f"last_cut={last_part_cut} req_length={req_length//1024}KB "
-        f"part_count={part_count} chunk_size={chunk_size//1024}KB"
+    _log(
+        f"[MSG={id}] Chunks: offset={offset} parts={part_count} "
+        f"first_cut={first_part_cut} last_cut={last_part_cut} length={req_length//1024}KB"
     )
 
     body = tg_connect.yield_file(
@@ -603,7 +568,6 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
             mime_type = "application/octet-stream"
             file_name = f"{secrets.token_hex(2)}.unknown"
 
-    # ── Headers ──────────────────────────────────────────────────────────────
     headers = {
         "Content-Type": f"{mime_type}",
         "Content-Length": str(req_length),
@@ -623,12 +587,9 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
         headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
 
     setup_ms = (time.monotonic() - req_start) * 1000
-    stream_log.info(
-        f"[MSG={id}] ✅ Sending response — "
-        f"status={status_code} content_length={req_length//1024}KB "
-        f"mime={mime_type} disposition={disposition} "
-        f"setup_time={setup_ms:.0f}ms "
-        f"[DC={file_id.dc_id} parts={part_count}]"
+    _log(
+        f"[MSG={id}] ✅ RESPONSE status={status_code} length={req_length//1024}KB "
+        f"mime={mime_type} dc={file_id.dc_id} parts={part_count} setup={setup_ms:.0f}ms"
     )
 
     return web.Response(
