@@ -22,7 +22,6 @@ class ByteStreamer:
         self.clean_timer = 30 * 60
         self.client: Client = client
         self.cached_file_ids: Dict[int, FileId] = {}
-        # Per-DC locks so only one coroutine can create/destroy a session at a time
         self._session_locks: Dict[int, asyncio.Lock] = {}
         asyncio.create_task(self.clean_cache())
 
@@ -57,16 +56,12 @@ class ByteStreamer:
 
     async def refresh_file_properties(self, msg_id: int) -> FileId:
         """
-        Force-evict the cached file_id for msg_id and re-fetch from BIN_CHANNEL.
-        This renews the file_reference token, which expires after ~60 minutes.
-        A stale/expired file_reference causes GetFile to hang with a 15-second
-        timeout rather than returning a proper error — this is the primary cause
-        of specific videos never playing.
+        Force-evict cached file_id and re-fetch from BIN_CHANNEL to renew
+        the file_reference token (which expires and causes GetFile to hang).
         """
         log.info(
             f"[MSG={msg_id}] 🔄 Refreshing file_reference — "
-            f"evicting cached entry and re-fetching from BIN_CHANNEL "
-            f"[WHY: expired file_reference causes GetFile to hang on DC indefinitely]"
+            f"evicting cached entry and re-fetching from BIN_CHANNEL"
         )
         self.cached_file_ids.pop(msg_id, None)
         return await self.generate_file_properties(msg_id)
@@ -79,21 +74,22 @@ class ByteStreamer:
             return await self._create_or_get_session(client, file_id)
 
     async def _create_or_get_session(self, client: Client, file_id: FileId) -> Session:
-        """Inner (lock already held): return cached session or build a new one.
+        """
+        Return a cached media session for the given DC, or build a fresh one.
 
-        IMPORTANT: we always use Auth().create() + ExportAuthorization/ImportAuthorization,
-        even when the target DC is the same as the client's home DC.
+        Session strategy (matches biisal's proven working approach):
+          - Same DC as client's home: reuse client.storage.auth_key() directly.
+            No ExportAuthorization / ImportAuthorization is needed because the
+            client is already fully authenticated to its own DC.
+          - Cross DC: create a brand-new auth key via Auth().create(), then
+            ExportAuthorization from the main session and ImportAuthorization
+            into the new session so Telegram grants it download rights.
 
-        Why: when dc_id == client.storage.dc_id(), the naive approach reuses
-        client.storage.auth_key() to open a second MTProto session to that DC.
-        Telegram silently starves the second session when it shares the same auth key as
-        the already-running main session.  Every GetFile through that session then hangs
-        for the full 15-second timeout.  This is why DC=5 files always fail when one or
-        more clients have home_dc=5: those clients take the same-DC shortcut and all
-        GetFile requests time out even though the session itself creates successfully.
-
-        Using a fresh auth key (always) and importing the authorization creates a distinct
-        MTProto identity for each media session, which Telegram handles correctly.
+        Why NOT always-ExportAuth (previous Nobita approach):
+            Doing ExportAuthorization(dc_id=home_dc) on the same DC as the main
+            session can silently fail or be rate-limited for certain account/DC
+            states, causing GetFile to hang indefinitely.  Biisal avoids this
+            by simply reusing auth_key() for same-DC sessions.
         """
         dc_id = file_id.dc_id
         media_session = client.media_sessions.get(dc_id)
@@ -108,45 +104,55 @@ class ByteStreamer:
         )
         t0 = time.monotonic()
 
-        # Always: fresh auth key + ExportAuthorization/ImportAuthorization.
-        # This applies to BOTH cross-DC and same-DC cases (see docstring above).
-        media_session = Session(
-            client, dc_id,
-            await Auth(client, dc_id, await client.storage.test_mode()).create(),
-            await client.storage.test_mode(),
-            is_media=True,
-        )
-        await media_session.start()
+        if dc_id != client_dc:
+            # Cross-DC: fresh key + ExportAuthorization/ImportAuthorization
+            media_session = Session(
+                client, dc_id,
+                await Auth(client, dc_id, await client.storage.test_mode()).create(),
+                await client.storage.test_mode(),
+                is_media=True,
+            )
+            await media_session.start()
 
-        for attempt in range(6):
-            exported_auth = await client.invoke(
-                raw.functions.auth.ExportAuthorization(dc_id=dc_id)
-            )
-            try:
-                await media_session.send(
-                    raw.functions.auth.ImportAuthorization(
-                        id=exported_auth.id, bytes=exported_auth.bytes
+            for attempt in range(6):
+                exported_auth = await client.invoke(
+                    raw.functions.auth.ExportAuthorization(dc_id=dc_id)
+                )
+                try:
+                    await media_session.send(
+                        raw.functions.auth.ImportAuthorization(
+                            id=exported_auth.id, bytes=exported_auth.bytes
+                        )
                     )
+                    log.info(
+                        f"[DC={dc_id}] Auth imported on attempt {attempt + 1} "
+                        f"(cross-DC from home_dc={client_dc})"
+                    )
+                    break
+                except AuthBytesInvalid:
+                    log.warning(
+                        f"[DC={dc_id}] AuthBytesInvalid attempt {attempt + 1}/6 — retrying"
+                    )
+                    continue
+            else:
+                log.error(
+                    f"[DC={dc_id}] All 6 ImportAuthorization attempts failed — stopping session"
                 )
-                log.info(
-                    f"[DC={dc_id}] Auth imported on attempt {attempt + 1} "
-                    f"(same_dc={dc_id == client_dc})"
-                )
-                break
-            except AuthBytesInvalid:
-                log.warning(
-                    f"[DC={dc_id}] AuthBytesInvalid attempt {attempt + 1}/6 — retrying"
-                )
-                continue
+                await media_session.stop()
+                raise AuthBytesInvalid
         else:
-            log.error(
-                f"[DC={dc_id}] All 6 ImportAuthorization attempts failed — stopping session"
+            # Same DC: reuse the client's own auth key directly — no Export/Import needed
+            media_session = Session(
+                client, dc_id,
+                await client.storage.auth_key(),
+                await client.storage.test_mode(),
+                is_media=True,
             )
-            await media_session.stop()
-            raise AuthBytesInvalid
+            await media_session.start()
+            log.info(f"[DC={dc_id}] Same-DC session created using existing auth_key")
 
         elapsed = time.monotonic() - t0
-        log.info(f"[DC={dc_id}] Media session created in {elapsed:.2f}s")
+        log.info(f"[DC={dc_id}] Media session ready in {elapsed:.2f}s")
         client.media_sessions[dc_id] = media_session
         return media_session
 
@@ -159,8 +165,8 @@ class ByteStreamer:
     ) -> Session:
         """
         Safely drop a known-stale session and rebuild a fresh one.
-        Uses the per-DC lock and identity check to avoid killing a session that was
-        already rebuilt by a concurrent coroutine.
+        Uses the per-DC lock and identity check to avoid killing a session
+        that was already rebuilt by a concurrent coroutine.
         """
         dc_id = file_id.dc_id
         async with self._dc_lock(dc_id):
@@ -227,7 +233,7 @@ class ByteStreamer:
     async def yield_file(
         self,
         file_id: FileId,
-        msg_id: int,          # ← message ID in BIN_CHANNEL, needed to refresh file_reference
+        msg_id: int,
         index: int,
         offset: int,
         first_part_cut: int,
@@ -238,12 +244,10 @@ class ByteStreamer:
         """
         Async generator that yields raw bytes of a Telegram media file.
 
-        On TimeoutError (the primary cause of videos that never play):
-          1. The stale DC session is dropped and rebuilt (fixes dead-connection).
+        On TimeoutError:
+          1. The stale DC session is dropped and rebuilt.
           2. The cached file_reference is evicted and re-fetched from BIN_CHANNEL
-             (fixes expired file_reference, which makes GetFile hang on Telegram's side).
-        Both steps are needed because the session being alive does NOT mean the
-        file_reference is still valid.
+             (expired file_reference causes GetFile to hang on Telegram's side).
         """
         client = self.client
         work_loads[index] += 1
@@ -276,19 +280,16 @@ class ByteStreamer:
             """
             Shared timeout recovery: rebuild session AND refresh file_reference.
             Returns (new_media_session, new_location).
-            Raises if retries exhausted.
             """
             nonlocal file_id
             wait_time = min(2 ** retry_count, 10)
             log.error(
                 f"{_p()} ❌ asyncio TimeoutError [{context_label}] — "
-                f"error={e} retry={retry_count}/{max_retries} wait={wait_time}s "
-                f"[STEP 1: rebuild DC={dc_id} session; STEP 2: refresh file_reference for msg={msg_id}]"
+                f"retry={retry_count}/{max_retries} wait={wait_time}s"
             )
             if retry_count >= max_retries:
                 log.error(
-                    f"{_p()} ❌ FATAL: TimeoutError after {max_retries} retries "
-                    f"[DC={dc_id} msg={msg_id}] — stream cannot be recovered"
+                    f"{_p()} ❌ FATAL: TimeoutError after {max_retries} retries — stream cannot be recovered"
                 )
                 raise e
             await asyncio.sleep(wait_time)
@@ -303,15 +304,13 @@ class ByteStreamer:
                 file_id = await self.refresh_file_properties(msg_id)
                 new_location = await self.get_location(file_id)
                 log.info(
-                    f"{_p()} ✅ file_reference refreshed for msg={msg_id} "
-                    f"[new file_reference length={len(file_id.file_reference)}]"
+                    f"{_p()} ✅ file_reference refreshed for msg={msg_id}"
                 )
             except Exception as ref_err:
                 log.error(
-                    f"{_p()} ❌ Failed to refresh file_reference for msg={msg_id}: {ref_err} "
-                    f"— will retry with old location"
+                    f"{_p()} ❌ Failed to refresh file_reference: {ref_err} — using old location"
                 )
-                new_location = location  # fall back to old location
+                new_location = location
 
             return new_session, new_location
 
@@ -350,10 +349,9 @@ class ByteStreamer:
                     wait_time = min(2 ** retry_count, 10)
                     log.error(
                         f"{_p()} ❌ TelegramTimeout first chunk — "
-                        f"retry={retry_count}/{max_retries} wait={wait_time}s [DC={dc_id}]"
+                        f"retry={retry_count}/{max_retries} wait={wait_time}s"
                     )
                     if retry_count >= max_retries:
-                        log.error(f"{_p()} ❌ FATAL: TelegramTimeout {max_retries} retries exhausted")
                         raise
                     await asyncio.sleep(wait_time)
                     continue
@@ -366,7 +364,6 @@ class ByteStreamer:
                         f"retry={retry_count}/{max_retries} wait={wait_time}s"
                     )
                     if retry_count >= max_retries:
-                        log.error(f"{_p()} ❌ FATAL: InternalServerError {max_retries} retries exhausted")
                         raise
                     await asyncio.sleep(wait_time)
                     continue
@@ -448,7 +445,6 @@ class ByteStreamer:
                                 f"retry={retry_count}/{max_retries} wait={wait_time}s"
                             )
                             if retry_count >= max_retries:
-                                log.error(f"{_p()} ❌ FATAL: TelegramTimeout retries exhausted")
                                 raise
                             await asyncio.sleep(wait_time)
                             continue
@@ -461,7 +457,6 @@ class ByteStreamer:
                                 f"retry={retry_count}/{max_retries} wait={wait_time}s"
                             )
                             if retry_count >= max_retries:
-                                log.error(f"{_p()} ❌ FATAL: InternalServerError retries exhausted")
                                 raise
                             await asyncio.sleep(wait_time)
                             continue
