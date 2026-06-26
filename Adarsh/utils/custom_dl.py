@@ -1,5 +1,4 @@
 import math
-import time
 import asyncio
 import logging
 from Adarsh.vars import Var
@@ -8,9 +7,10 @@ from Adarsh.bot import work_loads
 from pyrogram import Client, utils, raw
 from .file_properties import get_file_ids
 from pyrogram.session import Session, Auth
-from pyrogram.errors import AuthBytesInvalid, FloodWait
+from pyrogram.errors import AuthBytesInvalid
 from Adarsh.server.exceptions import FIleNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
+
 
 log = logging.getLogger("stream.downloader")
 
@@ -29,8 +29,8 @@ class ByteStreamer:
         return self.cached_file_ids[id]
 
     async def generate_file_properties(self, id: int) -> FileId:
-        log.debug(f"Generating file properties for message with ID {id}")
         file_id = await get_file_ids(self.client, Var.BIN_CHANNEL, id)
+        log.debug(f"Generated file ID and Unique ID for message with ID {id}")
         if not file_id:
             log.debug(f"Message with ID {id} not found")
             raise FIleNotFound
@@ -39,47 +39,49 @@ class ByteStreamer:
         return self.cached_file_ids[id]
 
     async def generate_media_session(self, client: Client, file_id: FileId) -> Session:
-        """
-        Generates the media session for the DC that contains the media file.
-
-        IMPORTANT: A fresh auth key via Auth().create() + ExportAuthorization/ImportAuthorization
-        is ALWAYS used — even when file DC == client home DC.
-
-        Why: reusing client.storage.auth_key() for a second session on the same DC causes
-        Telegram to silently stall every GetFile request on that second session (auth_key
-        starvation). DC=5 files served by DC=5 clients are the most common victim.
-        Using a fresh auth key creates a distinct MTProto identity that Telegram handles
-        correctly regardless of whether the DC matches.
-        """
         media_session = client.media_sessions.get(file_id.dc_id, None)
 
         if media_session is None:
-            media_session = Session(
-                client,
-                file_id.dc_id,
-                await Auth(client, file_id.dc_id, await client.storage.test_mode()).create(),
-                await client.storage.test_mode(),
-                is_media=True,
-            )
-            await media_session.start()
-
-            for _ in range(6):
-                exported_auth = await client.invoke(
-                    raw.functions.auth.ExportAuthorization(dc_id=file_id.dc_id)
+            if file_id.dc_id != await client.storage.dc_id():
+                media_session = Session(
+                    client,
+                    file_id.dc_id,
+                    await Auth(
+                        client, file_id.dc_id, await client.storage.test_mode()
+                    ).create(),
+                    await client.storage.test_mode(),
+                    is_media=True,
                 )
-                try:
-                    await media_session.send(
-                        raw.functions.auth.ImportAuthorization(
-                            id=exported_auth.id, bytes=exported_auth.bytes
-                        )
+                await media_session.start()
+
+                for _ in range(6):
+                    exported_auth = await client.invoke(
+                        raw.functions.auth.ExportAuthorization(dc_id=file_id.dc_id)
                     )
-                    break
-                except AuthBytesInvalid:
-                    log.debug(f"Invalid authorization bytes for DC {file_id.dc_id}")
-                    continue
+                    try:
+                        await media_session.send(
+                            raw.functions.auth.ImportAuthorization(
+                                id=exported_auth.id, bytes=exported_auth.bytes
+                            )
+                        )
+                        break
+                    except AuthBytesInvalid:
+                        log.debug(
+                            f"Invalid authorization bytes for DC {file_id.dc_id}"
+                        )
+                        continue
+                else:
+                    await media_session.stop()
+                    raise AuthBytesInvalid
             else:
-                await media_session.stop()
-                raise AuthBytesInvalid
+                media_session = Session(
+                    client,
+                    file_id.dc_id,
+                    await client.storage.auth_key(),
+                    await client.storage.test_mode(),
+                    is_media=True,
+                )
+                await media_session.start()
 
             log.debug(f"Created media session for DC {file_id.dc_id}")
             client.media_sessions[file_id.dc_id] = media_session
@@ -109,26 +111,27 @@ class ByteStreamer:
                         channel_id=utils.get_channel_id(file_id.chat_id),
                         access_hash=file_id.chat_access_hash,
                     )
-            return raw.types.InputPeerPhotoFileLocation(
+            location = raw.types.InputPeerPhotoFileLocation(
                 peer=peer,
                 volume_id=file_id.volume_id,
                 local_id=file_id.local_id,
                 big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG,
             )
         elif file_type == FileType.PHOTO:
-            return raw.types.InputPhotoFileLocation(
+            location = raw.types.InputPhotoFileLocation(
                 id=file_id.media_id,
                 access_hash=file_id.access_hash,
                 file_reference=file_id.file_reference,
                 thumb_size=file_id.thumbnail_size,
             )
         else:
-            return raw.types.InputDocumentFileLocation(
+            location = raw.types.InputDocumentFileLocation(
                 id=file_id.media_id,
                 access_hash=file_id.access_hash,
                 file_reference=file_id.file_reference,
                 thumb_size=file_id.thumbnail_size,
             )
+        return location
 
     async def yield_file(
         self,
