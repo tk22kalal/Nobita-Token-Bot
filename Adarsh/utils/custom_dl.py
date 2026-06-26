@@ -79,54 +79,71 @@ class ByteStreamer:
             return await self._create_or_get_session(client, file_id)
 
     async def _create_or_get_session(self, client: Client, file_id: FileId) -> Session:
-        """Inner (lock already held): return cached session or build a new one."""
+        """Inner (lock already held): return cached session or build a new one.
+
+        IMPORTANT: we always use Auth().create() + ExportAuthorization/ImportAuthorization,
+        even when the target DC is the same as the client's home DC.
+
+        Why: when dc_id == client.storage.dc_id(), the naive approach reuses
+        client.storage.auth_key() to open a second MTProto session to that DC.
+        Telegram silently starves the second session when it shares the same auth key as
+        the already-running main session.  Every GetFile through that session then hangs
+        for the full 15-second timeout.  This is why DC=5 files always fail when one or
+        more clients have home_dc=5: those clients take the same-DC shortcut and all
+        GetFile requests time out even though the session itself creates successfully.
+
+        Using a fresh auth key (always) and importing the authorization creates a distinct
+        MTProto identity for each media session, which Telegram handles correctly.
+        """
         dc_id = file_id.dc_id
         media_session = client.media_sessions.get(dc_id)
         if media_session is not None:
             log.debug(f"[DC={dc_id}] Reusing cached media session")
             return media_session
 
+        client_dc = await client.storage.dc_id()
         log.info(
             f"[DC={dc_id}] No cached session — creating new media session "
-            f"(client_dc={await client.storage.dc_id()})"
+            f"(client_dc={client_dc}, same_dc={dc_id == client_dc})"
         )
         t0 = time.monotonic()
 
-        if dc_id != await client.storage.dc_id():
-            media_session = Session(
-                client, dc_id,
-                await Auth(client, dc_id, await client.storage.test_mode()).create(),
-                await client.storage.test_mode(),
-                is_media=True,
+        # Always: fresh auth key + ExportAuthorization/ImportAuthorization.
+        # This applies to BOTH cross-DC and same-DC cases (see docstring above).
+        media_session = Session(
+            client, dc_id,
+            await Auth(client, dc_id, await client.storage.test_mode()).create(),
+            await client.storage.test_mode(),
+            is_media=True,
+        )
+        await media_session.start()
+
+        for attempt in range(6):
+            exported_auth = await client.invoke(
+                raw.functions.auth.ExportAuthorization(dc_id=dc_id)
             )
-            await media_session.start()
-            for attempt in range(6):
-                exported_auth = await client.invoke(
-                    raw.functions.auth.ExportAuthorization(dc_id=dc_id)
-                )
-                try:
-                    await media_session.send(
-                        raw.functions.auth.ImportAuthorization(
-                            id=exported_auth.id, bytes=exported_auth.bytes
-                        )
+            try:
+                await media_session.send(
+                    raw.functions.auth.ImportAuthorization(
+                        id=exported_auth.id, bytes=exported_auth.bytes
                     )
-                    log.info(f"[DC={dc_id}] Auth imported on attempt {attempt+1}")
-                    break
-                except AuthBytesInvalid:
-                    log.warning(f"[DC={dc_id}] AuthBytesInvalid attempt {attempt+1}/6 — retrying")
-                    continue
-            else:
-                log.error(f"[DC={dc_id}] All 6 auth attempts failed — stopping session")
-                await media_session.stop()
-                raise AuthBytesInvalid
+                )
+                log.info(
+                    f"[DC={dc_id}] Auth imported on attempt {attempt + 1} "
+                    f"(same_dc={dc_id == client_dc})"
+                )
+                break
+            except AuthBytesInvalid:
+                log.warning(
+                    f"[DC={dc_id}] AuthBytesInvalid attempt {attempt + 1}/6 — retrying"
+                )
+                continue
         else:
-            media_session = Session(
-                client, dc_id,
-                await client.storage.auth_key(),
-                await client.storage.test_mode(),
-                is_media=True,
+            log.error(
+                f"[DC={dc_id}] All 6 ImportAuthorization attempts failed — stopping session"
             )
-            await media_session.start()
+            await media_session.stop()
+            raise AuthBytesInvalid
 
         elapsed = time.monotonic() - t0
         log.info(f"[DC={dc_id}] Media session created in {elapsed:.2f}s")
