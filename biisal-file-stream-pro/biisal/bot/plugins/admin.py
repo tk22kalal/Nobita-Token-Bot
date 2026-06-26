@@ -13,22 +13,21 @@ from biisal.bot import StreamBot
 from biisal.vars import Var
 from pyrogram import filters, Client
 from pyrogram.types import Message
+
 db = Database(Var.DATABASE_URL, Var.name)
 Broadcast_IDs = {}
 
-@StreamBot.on_message(filters.command("users") & filters.private )
+
+@StreamBot.on_message(filters.command("users") & filters.private & filters.user(list(Var.ADMIN_IDS)))
 async def sts(c: Client, m: Message):
-    user_id=m.from_user.id
-    if user_id in Var.OWNER_ID:
-        total_users = await db.total_users_count()
-        await m.reply_text(text=f"Total Users in DB: {total_users}", quote=True)
-        
-        
-@StreamBot.on_message(filters.command("broadcast") & filters.private  & filters.user(list(Var.OWNER_ID)))
+    total_users = await db.total_users_count()
+    await m.reply_text(text=f"Total Users in DB: {total_users}", quote=True)
+
+
+@StreamBot.on_message(filters.command("broadcast") & filters.private & filters.user(list(Var.OWNER_ID)))
 async def broadcast_(c, m):
-    user_id=m.from_user.id
     out = await m.reply_text(
-            text=f"Broadcast initiated! You will be notified with log file when all the users are notified."
+        text="Broadcast initiated! You will be notified with log file when all users are notified."
     )
     all_users = await db.get_all_users()
     broadcast_msg = m.reply_to_message
@@ -49,17 +48,17 @@ async def broadcast_(c, m):
     )
     async with aiofiles.open('broadcast.txt', 'w') as broadcast_log_file:
         async for user in all_users:
-            sts, msg = await send_msg(
+            sts_code, msg = await send_msg(
                 user_id=int(user['id']),
                 message=broadcast_msg
             )
             if msg is not None:
                 await broadcast_log_file.write(msg)
-            if sts == 200:
+            if sts_code == 200:
                 success += 1
             else:
                 failed += 1
-            if sts == 400:
+            if sts_code == 400:
                 await db.delete_user(user['id'])
             done += 1
             if Broadcast_IDs.get(broadcast_id) is None:
@@ -79,13 +78,52 @@ async def broadcast_(c, m):
     await out.delete()
     if failed == 0:
         await m.reply_text(
-            text=f"broadcast completed in `{completed_in}`\n\nTotal users {total_users}.\nTotal done {done}, {success} success and {failed} failed.",
+            text=f"Broadcast completed in `{completed_in}`\n\nTotal users {total_users}.\nDone {done}, {success} success, {failed} failed.",
             quote=True
         )
     else:
         await m.reply_document(
             document='broadcast.txt',
-            caption=f"broadcast completed in `{completed_in}`\n\nTotal users {total_users}.\nTotal done {done}, {success} success and {failed} failed.",
+            caption=f"Broadcast completed in `{completed_in}`\n\nTotal users {total_users}.\nDone {done}, {success} success, {failed} failed.",
             quote=True
         )
     os.remove('broadcast.txt')
+
+
+@StreamBot.on_message(filters.command("ping") & filters.private)
+async def ping(c: Client, m: Message):
+    start = time.time()
+    reply = await m.reply_text("Pinging...")
+    end = time.time()
+    await reply.edit_text(f"Pong! `{round((end - start) * 1000, 3)}ms`")
+
+
+@StreamBot.on_message(filters.command("checkenv") & filters.private & filters.user(list(Var.ADMIN_IDS)))
+async def check_env(c: Client, m: Message):
+    env_vars = {
+        "API_ID": bool(Var.API_ID),
+        "API_HASH": bool(Var.API_HASH),
+        "BOT_TOKEN": bool(Var.BOT_TOKEN),
+        "BIN_CHANNEL": bool(Var.BIN_CHANNEL),
+        "DB_CHANNEL": bool(Var.DB_CHANNEL),
+        "OWNER_ID": bool(Var.OWNER_ID),
+        "ADMIN_IDS": bool(Var.ADMIN_IDS),
+        "GIT_TOKEN": bool(os.environ.get('GIT_TOKEN', '')),
+        "DATABASE_URL": bool(Var.DATABASE_URL),
+        "DUAL_DOMAIN_WEB": bool(Var.DUAL_DOMAIN_WEB),
+        "DUAL_DOMAIN_WEBX": bool(Var.DUAL_DOMAIN_WEBX),
+        "SERVE_DOMAIN": Var.SERVE_DOMAIN or "not set",
+        "FQDN": Var.FQDN,
+        "HAS_SSL": Var.HAS_SSL,
+        "MULTI_CLIENT": Var.MULTI_CLIENT,
+    }
+
+    lines = ["**Environment Check:**\n"]
+    for key, val in env_vars.items():
+        if isinstance(val, bool):
+            icon = "✅" if val else "❌"
+            lines.append(f"{icon} `{key}`")
+        else:
+            lines.append(f"ℹ️ `{key}`: `{val}`")
+
+    await m.reply_text("\n".join(lines))
