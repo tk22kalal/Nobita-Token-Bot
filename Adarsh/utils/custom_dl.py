@@ -1,4 +1,5 @@
 import math
+import time
 import asyncio
 import logging
 from Adarsh.vars import Var
@@ -12,6 +13,9 @@ from pyrogram.errors.exceptions.service_unavailable_503 import Timeout as Telegr
 from pyrogram.errors.exceptions.internal_server_error_500 import InternalServerError
 from Adarsh.server.exceptions import FIleNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
+
+# Separate logger so we can see it clearly
+log = logging.getLogger("stream.downloader")
 
 
 class ByteStreamer:
@@ -43,7 +47,7 @@ class ByteStreamer:
         """
         if id not in self.cached_file_ids:
             await self.generate_file_properties(id)
-            logging.debug(f"Cached file properties for message with ID {id}")
+            log.debug(f"[MSG={id}] File properties cached")
         return self.cached_file_ids[id]
     
     async def generate_file_properties(self, id: int) -> FileId:
@@ -51,13 +55,20 @@ class ByteStreamer:
         Generates the properties of a media file on a specific message.
         returns ths properties in a FIleId class.
         """
+        log.info(f"[MSG={id}] Fetching file properties from BIN_CHANNEL …")
+        t0 = time.monotonic()
         file_id = await get_file_ids(self.client, Var.BIN_CHANNEL, id)
-        logging.debug(f"Generated file ID and Unique ID for message with ID {id}")
+        elapsed = time.monotonic() - t0
         if not file_id:
-            logging.debug(f"Message with ID {id} not found")
+            log.error(f"[MSG={id}] File not found in BIN_CHANNEL (lookup took {elapsed:.2f}s)")
             raise FIleNotFound
+        log.info(
+            f"[MSG={id}] Properties OK in {elapsed:.2f}s — "
+            f"dc_id={file_id.dc_id} file_size={file_id.file_size} "
+            f"mime={getattr(file_id, 'mime_type', 'unknown')} "
+            f"unique_id={file_id.unique_id[:12]}…"
+        )
         self.cached_file_ids[id] = file_id
-        logging.debug(f"Cached media message with ID {id}")
         return self.cached_file_ids[id]
 
     async def generate_media_session(self, client: Client, file_id: FileId) -> Session:
@@ -65,10 +76,14 @@ class ByteStreamer:
         Generates the media session for the DC that contains the media file.
         This is required for getting the bytes from Telegram servers.
         """
-
         media_session = client.media_sessions.get(file_id.dc_id, None)
 
         if media_session is None:
+            log.info(
+                f"[DC={file_id.dc_id}] No cached session — creating new media session "
+                f"(client_dc={await client.storage.dc_id()})"
+            )
+            t0 = time.monotonic()
             if file_id.dc_id != await client.storage.dc_id():
                 media_session = Session(
                     client,
@@ -81,24 +96,25 @@ class ByteStreamer:
                 )
                 await media_session.start()
 
-                for _ in range(6):
+                for attempt in range(6):
                     exported_auth = await client.invoke(
                         raw.functions.auth.ExportAuthorization(dc_id=file_id.dc_id)
                     )
-
                     try:
                         await media_session.send(
                             raw.functions.auth.ImportAuthorization(
                                 id=exported_auth.id, bytes=exported_auth.bytes
                             )
                         )
+                        log.info(f"[DC={file_id.dc_id}] Authorization imported successfully on attempt {attempt+1}")
                         break
                     except AuthBytesInvalid:
-                        logging.debug(
-                            f"Invalid authorization bytes for DC {file_id.dc_id}"
+                        log.warning(
+                            f"[DC={file_id.dc_id}] AuthBytesInvalid on attempt {attempt+1}/6 — retrying …"
                         )
                         continue
                 else:
+                    log.error(f"[DC={file_id.dc_id}] All 6 auth attempts failed — stopping session")
                     await media_session.stop()
                     raise AuthBytesInvalid
             else:
@@ -110,10 +126,12 @@ class ByteStreamer:
                     is_media=True,
                 )
                 await media_session.start()
-            logging.debug(f"Created media session for DC {file_id.dc_id}")
+
+            elapsed = time.monotonic() - t0
+            log.info(f"[DC={file_id.dc_id}] Media session created in {elapsed:.2f}s")
             client.media_sessions[file_id.dc_id] = media_session
         else:
-            logging.debug(f"Using cached media session for DC {file_id.dc_id}")
+            log.debug(f"[DC={file_id.dc_id}] Reusing cached media session")
         return media_session
 
 
@@ -179,60 +197,135 @@ class ByteStreamer:
         """
         client = self.client
         work_loads[index] += 1
-        logging.debug(f"Starting to yielding file with client {index}.")
-        media_session = await self.generate_media_session(client, file_id)
 
-        current_part = 1
+        media_id = getattr(file_id, 'media_id', 'unknown')
+        file_size = getattr(file_id, 'file_size', 'unknown')
+        dc_id = file_id.dc_id
+
+        log.info(
+            f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
+            f"yield_file START — offset={offset} part_count={part_count} "
+            f"chunk_size={chunk_size//1024}KB first_cut={first_part_cut} last_cut={last_part_cut} "
+            f"file_size={file_size}"
+        )
+        stream_start = time.monotonic()
+
+        media_session = await self.generate_media_session(client, file_id)
         location = await self.get_location(file_id)
 
+        current_part = 1
+        bytes_yielded = 0
+
+        def _fetch_log_prefix():
+            return (
+                f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
+                f"[PART={current_part}/{part_count}] [OFFSET={offset}]"
+            )
+
         try:
-            # Initial request with flood wait and timeout handling
+            # ── First chunk ──────────────────────────────────────────────────
             retry_count = 0
             max_retries = 5
             while True:
+                t_fetch = time.monotonic()
                 try:
                     r = await media_session.send(
                         raw.functions.upload.GetFile(
                             location=location, offset=offset, limit=chunk_size
                         ),
                     )
+                    fetch_ms = (time.monotonic() - t_fetch) * 1000
+                    log.info(
+                        f"{_fetch_log_prefix()} First chunk fetched in {fetch_ms:.0f}ms "
+                        f"(retry={retry_count})"
+                    )
+                    if fetch_ms > 5000:
+                        log.warning(
+                            f"{_fetch_log_prefix()} ⚠ SLOW first chunk — {fetch_ms:.0f}ms "
+                            f"(DC={dc_id} is slow or overloaded)"
+                        )
                     break
                 except FloodWait as e:
-                    logging.warning(f"FloodWait: Waiting for {e.value} seconds")
+                    log.warning(
+                        f"{_fetch_log_prefix()} FloodWait — Telegram rate limit hit, "
+                        f"waiting {e.value}s before retry"
+                    )
                     await asyncio.sleep(e.value)
                     continue
                 except TelegramTimeout as e:
                     retry_count += 1
-                    if retry_count >= max_retries:
-                        logging.error(f"Telegram timeout after {max_retries} retries on initial request")
-                        raise
                     wait_time = min(2 ** retry_count, 10)
-                    logging.warning(f"Telegram timeout on initial request, retry {retry_count}/{max_retries} after {wait_time}s")
+                    log.error(
+                        f"{_fetch_log_prefix()} ❌ TelegramTimeout on first chunk — "
+                        f"error={e} retry={retry_count}/{max_retries} next_wait={wait_time}s "
+                        f"[CAUSE: DC={dc_id} did not respond within Pyrogram's timeout — "
+                        f"possible DC overload, bad route, or very large file reference]"
+                    )
+                    if retry_count >= max_retries:
+                        log.error(
+                            f"{_fetch_log_prefix()} ❌ FATAL: TelegramTimeout exceeded {max_retries} retries "
+                            f"on first chunk — stream will fail. "
+                            f"[Offset={offset} DC={dc_id} media_id={media_id}]"
+                        )
+                        raise
                     await asyncio.sleep(wait_time)
                     continue
                 except InternalServerError as e:
                     retry_count += 1
-                    if retry_count >= max_retries:
-                        logging.error(f"Telegram internal error after {max_retries} retries on initial request")
-                        raise
                     wait_time = min(3 ** retry_count, 15)
-                    logging.warning(f"Telegram internal error on initial request, retry {retry_count}/{max_retries} after {wait_time}s")
+                    log.error(
+                        f"{_fetch_log_prefix()} ❌ Telegram InternalServerError on first chunk — "
+                        f"error={e} retry={retry_count}/{max_retries} next_wait={wait_time}s "
+                        f"[CAUSE: Telegram DC={dc_id} server-side error, usually transient]"
+                    )
+                    if retry_count >= max_retries:
+                        log.error(
+                            f"{_fetch_log_prefix()} ❌ FATAL: InternalServerError exceeded {max_retries} retries "
+                            f"on first chunk — stream will fail."
+                        )
+                        raise
                     await asyncio.sleep(wait_time)
                     continue
+                except Exception as e:
+                    log.error(
+                        f"{_fetch_log_prefix()} ❌ Unexpected error on first chunk fetch — "
+                        f"type={type(e).__name__} error={e}"
+                    )
+                    raise
 
             if isinstance(r, raw.types.upload.File):
                 while True:
                     chunk = r.bytes
                     if not chunk:
+                        log.warning(
+                            f"{_fetch_log_prefix()} Empty chunk received — "
+                            f"[CAUSE: Telegram returned 0 bytes at offset={offset}; "
+                            f"possible end-of-file or bad file reference]"
+                        )
                         break
-                    elif part_count == 1:
-                        yield chunk[first_part_cut:last_part_cut]
+
+                    chunk_len = len(chunk)
+
+                    if part_count == 1:
+                        sliced = chunk[first_part_cut:last_part_cut]
+                        bytes_yielded += len(sliced)
+                        yield sliced
                     elif current_part == 1:
-                        yield chunk[first_part_cut:]
+                        sliced = chunk[first_part_cut:]
+                        bytes_yielded += len(sliced)
+                        yield sliced
                     elif current_part == part_count:
-                        yield chunk[:last_part_cut]
+                        sliced = chunk[:last_part_cut]
+                        bytes_yielded += len(sliced)
+                        yield sliced
                     else:
+                        bytes_yielded += chunk_len
                         yield chunk
+
+                    log.debug(
+                        f"{_fetch_log_prefix()} Yielded {chunk_len//1024}KB "
+                        f"total_so_far={bytes_yielded//1024}KB"
+                    )
 
                     current_part += 1
                     offset += chunk_size
@@ -240,51 +333,124 @@ class ByteStreamer:
                     if current_part > part_count:
                         break
 
-                    # Subsequent requests with flood wait and timeout handling
+                    # ── Subsequent chunks ────────────────────────────────────
                     retry_count = 0
                     max_retries = 5
                     while True:
+                        t_fetch = time.monotonic()
                         try:
                             r = await media_session.send(
                                 raw.functions.upload.GetFile(
                                     location=location, offset=offset, limit=chunk_size
                                 ),
                             )
+                            fetch_ms = (time.monotonic() - t_fetch) * 1000
+                            if fetch_ms > 5000:
+                                log.warning(
+                                    f"{_fetch_log_prefix()} ⚠ SLOW chunk — {fetch_ms:.0f}ms "
+                                    f"(DC={dc_id} offset={offset} — "
+                                    f"network congestion or Telegram DC bottleneck)"
+                                )
+                            else:
+                                log.debug(
+                                    f"{_fetch_log_prefix()} Chunk fetched in {fetch_ms:.0f}ms"
+                                )
                             break
                         except FloodWait as e:
-                            logging.warning(f"FloodWait: Waiting for {e.value} seconds")
+                            log.warning(
+                                f"{_fetch_log_prefix()} FloodWait — waiting {e.value}s "
+                                f"[offset={offset}]"
+                            )
                             await asyncio.sleep(e.value)
                             continue
                         except TelegramTimeout as e:
                             retry_count += 1
-                            if retry_count >= max_retries:
-                                logging.error(f"Telegram timeout after {max_retries} retries")
-                                raise
                             wait_time = min(2 ** retry_count, 10)
-                            logging.warning(f"Telegram timeout, retry {retry_count}/{max_retries} after {wait_time}s")
+                            log.error(
+                                f"{_fetch_log_prefix()} ❌ TelegramTimeout on chunk — "
+                                f"error={e} retry={retry_count}/{max_retries} "
+                                f"next_wait={wait_time}s offset={offset} "
+                                f"[CAUSE: DC={dc_id} timeout — buffering/stall will occur]"
+                            )
+                            if retry_count >= max_retries:
+                                log.error(
+                                    f"{_fetch_log_prefix()} ❌ FATAL: TelegramTimeout after "
+                                    f"{max_retries} retries at offset={offset} DC={dc_id} "
+                                    f"— this is WHY the video stops/buffers indefinitely"
+                                )
+                                raise
                             await asyncio.sleep(wait_time)
                             continue
                         except InternalServerError as e:
                             retry_count += 1
-                            if retry_count >= max_retries:
-                                logging.error(f"Telegram internal error after {max_retries} retries")
-                                raise
                             wait_time = min(3 ** retry_count, 15)
-                            logging.warning(f"Telegram internal error, retry {retry_count}/{max_retries} after {wait_time}s")
+                            log.error(
+                                f"{_fetch_log_prefix()} ❌ Telegram InternalServerError on chunk — "
+                                f"error={e} retry={retry_count}/{max_retries} "
+                                f"next_wait={wait_time}s offset={offset}"
+                            )
+                            if retry_count >= max_retries:
+                                log.error(
+                                    f"{_fetch_log_prefix()} ❌ FATAL: InternalServerError after "
+                                    f"{max_retries} retries at offset={offset} DC={dc_id}"
+                                )
+                                raise
                             await asyncio.sleep(wait_time)
                             continue
+                        except Exception as e:
+                            log.error(
+                                f"{_fetch_log_prefix()} ❌ Unexpected error on chunk fetch — "
+                                f"type={type(e).__name__} error={e} offset={offset}"
+                            )
+                            raise
+
+            else:
+                log.error(
+                    f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
+                    f"Unexpected Telegram response type: {type(r).__name__} "
+                    f"[CAUSE: GetFile did not return upload.File — possibly wrong location or expired file reference]"
+                )
 
         except TelegramTimeout as e:
-            logging.error(f"Telegram timeout error yielding file: {e}")
+            total_elapsed = time.monotonic() - stream_start
+            log.error(
+                f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
+                f"❌ STREAM ABORTED — TelegramTimeout after {total_elapsed:.1f}s "
+                f"yielded={bytes_yielded//1024}KB of {file_size} "
+                f"part={current_part}/{part_count} offset={offset} "
+                f"[WHY: Telegram DC={dc_id} stopped responding — "
+                f"DC may be overloaded, the file reference may have expired, "
+                f"or there is a network issue between server and Telegram]"
+            )
             raise
         except InternalServerError as e:
-            logging.error(f"Telegram internal server error yielding file: {e}")
+            total_elapsed = time.monotonic() - stream_start
+            log.error(
+                f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
+                f"❌ STREAM ABORTED — Telegram InternalServerError after {total_elapsed:.1f}s "
+                f"yielded={bytes_yielded//1024}KB part={current_part}/{part_count} "
+                f"[WHY: Telegram server-side error on DC={dc_id}]"
+            )
             raise
         except (TimeoutError, AttributeError) as e:
-            logging.error(f"Error yielding file: {e}")
+            total_elapsed = time.monotonic() - stream_start
+            log.error(
+                f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
+                f"❌ STREAM ABORTED — {type(e).__name__}: {e} after {total_elapsed:.1f}s "
+                f"yielded={bytes_yielded//1024}KB part={current_part}/{part_count} "
+                f"[WHY: asyncio timeout or session attribute error — "
+                f"client may have disconnected or session is stale]"
+            )
             pass
         finally:
-            logging.debug(f"Finished yielding file with {current_part} parts.")
+            total_elapsed = time.monotonic() - stream_start
+            log.info(
+                f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
+                f"yield_file END — parts_completed={current_part-1}/{part_count} "
+                f"bytes_yielded={bytes_yielded//1024}KB "
+                f"total_time={total_elapsed:.2f}s "
+                f"avg_speed={bytes_yielded/(total_elapsed*1024) if total_elapsed > 0 else 0:.0f}KB/s"
+            )
             work_loads[index] -= 1
 
     
@@ -295,4 +461,4 @@ class ByteStreamer:
         while True:
             await asyncio.sleep(self.clean_timer)
             self.cached_file_ids.clear()
-            logging.debug("Cleaned the cache")
+            log.debug("File ID cache cleared")
