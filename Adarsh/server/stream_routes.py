@@ -567,7 +567,7 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
     first_part_cut = from_bytes - offset
     last_part_cut = until_bytes % chunk_size + 1
     req_length = until_bytes - from_bytes + 1
-    part_count = math.ceil((until_bytes + 1) / chunk_size) - math.floor(offset / chunk_size)
+    part_count = math.ceil(until_bytes / chunk_size) - math.floor(offset / chunk_size)
 
     stream_log.info(
         f"[MSG={id}] Chunk math — offset={offset} first_cut={first_part_cut} "
@@ -575,15 +575,8 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
         f"part_count={part_count} chunk_size={chunk_size//1024}KB"
     )
 
-    if part_count <= 0:
-        stream_log.error(
-            f"[MSG={id}] ❌ Invalid part_count={part_count} — "
-            f"offset={offset} until_bytes={until_bytes} from_bytes={from_bytes} "
-            f"[CAUSE: math error or zero-length range — video may not start]"
-        )
-
     body = tg_connect.yield_file(
-        file_id, id, index, offset, first_part_cut, last_part_cut, part_count, chunk_size
+        file_id, index, offset, first_part_cut, last_part_cut, part_count, chunk_size
     )
 
     # ── MIME / filename ──────────────────────────────────────────────────────
