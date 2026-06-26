@@ -583,7 +583,7 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
         )
 
     body = tg_connect.yield_file(
-        file_id, index, offset, first_part_cut, last_part_cut, part_count, chunk_size
+        file_id, id, index, offset, first_part_cut, last_part_cut, part_count, chunk_size
     )
 
     # ── MIME / filename ──────────────────────────────────────────────────────
