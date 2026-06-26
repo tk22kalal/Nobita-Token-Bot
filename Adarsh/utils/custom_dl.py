@@ -3,7 +3,7 @@ import time
 import asyncio
 import logging
 from Adarsh.vars import Var
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 from Adarsh.bot import work_loads
 from pyrogram import Client, utils, raw
 from .file_properties import get_file_ids
@@ -20,41 +20,28 @@ log = logging.getLogger("stream.downloader")
 
 class ByteStreamer:
     def __init__(self, client: Client):
-        """A custom class that holds the cache of a specific client and class functions.
-        attributes:
-            client: the client that the cache is for.
-            cached_file_ids: a dict of cached file IDs.
-            cached_file_properties: a dict of cached file properties.
-        
-        functions:
-            generate_file_properties: returns the properties for a media of a specific message contained in Tuple.
-            generate_media_session: returns the media session for the DC that contains the media file.
-            yield_file: yield a file from telegram servers for streaming.
-            
-        This is a modified version of the <https://github.com/eyaadh/megadlbot_oss/blob/master/mega/telegram/utils/custom_download.py>
-        Thanks to Eyaadh <https://github.com/eyaadh>
-        """
+        """A custom class that holds the cache of a specific client and class functions."""
         self.clean_timer = 30 * 60
         self.client: Client = client
         self.cached_file_ids: Dict[int, FileId] = {}
+        # Per-DC locks so only one coroutine can create/destroy a session at a time.
+        # This prevents concurrent coroutines from tearing down each other's sessions.
+        self._session_locks: Dict[int, asyncio.Lock] = {}
         asyncio.create_task(self.clean_cache())
 
+    def _dc_lock(self, dc_id: int) -> asyncio.Lock:
+        """Return (creating if needed) the per-DC asyncio Lock."""
+        if dc_id not in self._session_locks:
+            self._session_locks[dc_id] = asyncio.Lock()
+        return self._session_locks[dc_id]
+
     async def get_file_properties(self, id: int) -> FileId:
-        """
-        Returns the properties of a media of a specific message in a FIleId class.
-        if the properties are cached, then it'll return the cached results.
-        or it'll generate the properties from the Message ID and cache them.
-        """
         if id not in self.cached_file_ids:
             await self.generate_file_properties(id)
             log.debug(f"[MSG={id}] File properties cached")
         return self.cached_file_ids[id]
-    
+
     async def generate_file_properties(self, id: int) -> FileId:
-        """
-        Generates the properties of a media file on a specific message.
-        returns ths properties in a FIleId class.
-        """
         log.info(f"[MSG={id}] Fetching file properties from BIN_CHANNEL …")
         t0 = time.monotonic()
         file_id = await get_file_ids(self.client, Var.BIN_CHANNEL, id)
@@ -73,75 +60,128 @@ class ByteStreamer:
 
     async def generate_media_session(self, client: Client, file_id: FileId) -> Session:
         """
-        Generates the media session for the DC that contains the media file.
-        This is required for getting the bytes from Telegram servers.
+        Returns the media session for the DC that holds the file.
+        Protected by a per-DC lock so concurrent coroutines never race to create
+        or destroy the same session.
         """
-        media_session = client.media_sessions.get(file_id.dc_id, None)
+        dc_id = file_id.dc_id
+        async with self._dc_lock(dc_id):
+            return await self._create_or_get_session(client, file_id)
 
-        if media_session is None:
-            log.info(
-                f"[DC={file_id.dc_id}] No cached session — creating new media session "
-                f"(client_dc={await client.storage.dc_id()})"
+    async def _create_or_get_session(self, client: Client, file_id: FileId) -> Session:
+        """Inner (lock already held): return cached session or build a new one."""
+        dc_id = file_id.dc_id
+        media_session = client.media_sessions.get(dc_id)
+
+        if media_session is not None:
+            log.debug(f"[DC={dc_id}] Reusing cached media session")
+            return media_session
+
+        log.info(
+            f"[DC={dc_id}] No cached session — creating new media session "
+            f"(client_dc={await client.storage.dc_id()})"
+        )
+        t0 = time.monotonic()
+
+        if dc_id != await client.storage.dc_id():
+            media_session = Session(
+                client,
+                dc_id,
+                await Auth(client, dc_id, await client.storage.test_mode()).create(),
+                await client.storage.test_mode(),
+                is_media=True,
             )
-            t0 = time.monotonic()
-            if file_id.dc_id != await client.storage.dc_id():
-                media_session = Session(
-                    client,
-                    file_id.dc_id,
-                    await Auth(
-                        client, file_id.dc_id, await client.storage.test_mode()
-                    ).create(),
-                    await client.storage.test_mode(),
-                    is_media=True,
-                )
-                await media_session.start()
+            await media_session.start()
 
-                for attempt in range(6):
-                    exported_auth = await client.invoke(
-                        raw.functions.auth.ExportAuthorization(dc_id=file_id.dc_id)
+            for attempt in range(6):
+                exported_auth = await client.invoke(
+                    raw.functions.auth.ExportAuthorization(dc_id=dc_id)
+                )
+                try:
+                    await media_session.send(
+                        raw.functions.auth.ImportAuthorization(
+                            id=exported_auth.id, bytes=exported_auth.bytes
+                        )
                     )
-                    try:
-                        await media_session.send(
-                            raw.functions.auth.ImportAuthorization(
-                                id=exported_auth.id, bytes=exported_auth.bytes
-                            )
-                        )
-                        log.info(f"[DC={file_id.dc_id}] Authorization imported successfully on attempt {attempt+1}")
-                        break
-                    except AuthBytesInvalid:
-                        log.warning(
-                            f"[DC={file_id.dc_id}] AuthBytesInvalid on attempt {attempt+1}/6 — retrying …"
-                        )
-                        continue
-                else:
-                    log.error(f"[DC={file_id.dc_id}] All 6 auth attempts failed — stopping session")
-                    await media_session.stop()
-                    raise AuthBytesInvalid
+                    log.info(f"[DC={dc_id}] Authorization imported on attempt {attempt+1}")
+                    break
+                except AuthBytesInvalid:
+                    log.warning(f"[DC={dc_id}] AuthBytesInvalid on attempt {attempt+1}/6 — retrying …")
+                    continue
             else:
-                media_session = Session(
-                    client,
-                    file_id.dc_id,
-                    await client.storage.auth_key(),
-                    await client.storage.test_mode(),
-                    is_media=True,
-                )
-                await media_session.start()
-
-            elapsed = time.monotonic() - t0
-            log.info(f"[DC={file_id.dc_id}] Media session created in {elapsed:.2f}s")
-            client.media_sessions[file_id.dc_id] = media_session
+                log.error(f"[DC={dc_id}] All 6 auth attempts failed — stopping session")
+                await media_session.stop()
+                raise AuthBytesInvalid
         else:
-            log.debug(f"[DC={file_id.dc_id}] Reusing cached media session")
+            media_session = Session(
+                client,
+                dc_id,
+                await client.storage.auth_key(),
+                await client.storage.test_mode(),
+                is_media=True,
+            )
+            await media_session.start()
+
+        elapsed = time.monotonic() - t0
+        log.info(f"[DC={dc_id}] Media session created in {elapsed:.2f}s")
+        client.media_sessions[dc_id] = media_session
         return media_session
 
+    async def _recover_stale_session(
+        self,
+        client: Client,
+        file_id: FileId,
+        stale_session: Session,
+        context: str,
+    ) -> Session:
+        """
+        Safely drop a known-stale session and rebuild a fresh one.
+
+        Safety guarantees:
+        - Holds the per-DC lock for the entire operation so no other coroutine
+          can read, create, or destroy a session for this DC concurrently.
+        - Uses identity check (`is`) before deleting from the cache so we never
+          remove a session that was already rebuilt by another coroutine.
+        - Stops only the stale_session object (the one *we* hold), not whatever
+          might currently be in the cache.
+        """
+        dc_id = file_id.dc_id
+        async with self._dc_lock(dc_id):
+            cached = client.media_sessions.get(dc_id)
+            if cached is stale_session:
+                # The cache still holds our stale object — safe to remove it
+                del client.media_sessions[dc_id]
+                log.info(
+                    f"[DC={dc_id}] [{context}] Removed stale session from cache. "
+                    f"Stopping it now …"
+                )
+                try:
+                    await stale_session.stop()
+                except Exception as stop_err:
+                    log.warning(
+                        f"[DC={dc_id}] [{context}] Error stopping stale session (ignoring): {stop_err}"
+                    )
+            else:
+                # Another coroutine already rebuilt the session — reuse it
+                if cached is not None:
+                    log.info(
+                        f"[DC={dc_id}] [{context}] Stale session already replaced by another "
+                        f"coroutine — reusing the new session"
+                    )
+                    return cached
+                log.info(
+                    f"[DC={dc_id}] [{context}] Stale session already evicted — building fresh one"
+                )
+
+            # Build and cache the fresh session
+            return await self._create_or_get_session(client, file_id)
 
     @staticmethod
-    async def get_location(file_id: FileId) -> Union[raw.types.InputPhotoFileLocation,
-                                                     raw.types.InputDocumentFileLocation,
-                                                     raw.types.InputPeerPhotoFileLocation,]:
-        """
-        Returns the file location for the media file.
-        """
+    async def get_location(file_id: FileId) -> Union[
+        raw.types.InputPhotoFileLocation,
+        raw.types.InputDocumentFileLocation,
+        raw.types.InputPeerPhotoFileLocation,
+    ]:
         file_type = file_id.file_type
 
         if file_type == FileType.CHAT_PHOTO:
@@ -157,7 +197,6 @@ class ByteStreamer:
                         channel_id=utils.get_channel_id(file_id.chat_id),
                         access_hash=file_id.chat_access_hash,
                     )
-
             location = raw.types.InputPeerPhotoFileLocation(
                 peer=peer,
                 volume_id=file_id.volume_id,
@@ -216,7 +255,7 @@ class ByteStreamer:
         current_part = 1
         bytes_yielded = 0
 
-        def _fetch_log_prefix():
+        def _prefix():
             return (
                 f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
                 f"[PART={current_part}/{part_count}] [OFFSET={offset}]"
@@ -235,77 +274,87 @@ class ByteStreamer:
                         ),
                     )
                     fetch_ms = (time.monotonic() - t_fetch) * 1000
-                    log.info(
-                        f"{_fetch_log_prefix()} First chunk fetched in {fetch_ms:.0f}ms "
-                        f"(retry={retry_count})"
-                    )
+                    log.info(f"{_prefix()} First chunk fetched in {fetch_ms:.0f}ms (retry={retry_count})")
                     if fetch_ms > 5000:
-                        log.warning(
-                            f"{_fetch_log_prefix()} ⚠ SLOW first chunk — {fetch_ms:.0f}ms "
-                            f"(DC={dc_id} is slow or overloaded)"
-                        )
+                        log.warning(f"{_prefix()} ⚠ SLOW first chunk — {fetch_ms:.0f}ms (DC={dc_id})")
                     break
+
                 except FloodWait as e:
-                    log.warning(
-                        f"{_fetch_log_prefix()} FloodWait — Telegram rate limit hit, "
-                        f"waiting {e.value}s before retry"
-                    )
+                    log.warning(f"{_prefix()} FloodWait {e.value}s — Telegram rate limit")
                     await asyncio.sleep(e.value)
                     continue
+
+                except (TimeoutError, asyncio.TimeoutError) as e:
+                    # asyncio-level timeout = DC session is stale/dead.
+                    # Recover safely under the per-DC lock.
+                    retry_count += 1
+                    wait_time = min(2 ** retry_count, 10)
+                    log.error(
+                        f"{_prefix()} ❌ asyncio TimeoutError on first chunk — "
+                        f"error={e} retry={retry_count}/{max_retries} wait={wait_time}s "
+                        f"[DC={dc_id} session is stale — rebuilding under lock]"
+                    )
+                    if retry_count >= max_retries:
+                        log.error(
+                            f"{_prefix()} ❌ FATAL: asyncio TimeoutError after {max_retries} retries "
+                            f"on first chunk — DC={dc_id} session cannot be recovered"
+                        )
+                        raise
+                    await asyncio.sleep(wait_time)
+                    media_session = await self._recover_stale_session(
+                        client, file_id, media_session, "first-chunk"
+                    )
+                    continue
+
                 except TelegramTimeout as e:
                     retry_count += 1
                     wait_time = min(2 ** retry_count, 10)
                     log.error(
-                        f"{_fetch_log_prefix()} ❌ TelegramTimeout on first chunk — "
-                        f"error={e} retry={retry_count}/{max_retries} next_wait={wait_time}s "
-                        f"[CAUSE: DC={dc_id} did not respond within Pyrogram's timeout — "
-                        f"possible DC overload, bad route, or very large file reference]"
+                        f"{_prefix()} ❌ TelegramTimeout on first chunk — "
+                        f"error={e} retry={retry_count}/{max_retries} wait={wait_time}s "
+                        f"[DC={dc_id} did not respond — overload or bad route]"
                     )
                     if retry_count >= max_retries:
                         log.error(
-                            f"{_fetch_log_prefix()} ❌ FATAL: TelegramTimeout exceeded {max_retries} retries "
-                            f"on first chunk — stream will fail. "
-                            f"[Offset={offset} DC={dc_id} media_id={media_id}]"
+                            f"{_prefix()} ❌ FATAL: TelegramTimeout after {max_retries} retries "
+                            f"on first chunk [DC={dc_id} media={media_id}]"
                         )
                         raise
                     await asyncio.sleep(wait_time)
                     continue
+
                 except InternalServerError as e:
                     retry_count += 1
                     wait_time = min(3 ** retry_count, 15)
                     log.error(
-                        f"{_fetch_log_prefix()} ❌ Telegram InternalServerError on first chunk — "
-                        f"error={e} retry={retry_count}/{max_retries} next_wait={wait_time}s "
-                        f"[CAUSE: Telegram DC={dc_id} server-side error, usually transient]"
+                        f"{_prefix()} ❌ Telegram InternalServerError on first chunk — "
+                        f"error={e} retry={retry_count}/{max_retries} wait={wait_time}s"
                     )
                     if retry_count >= max_retries:
-                        log.error(
-                            f"{_fetch_log_prefix()} ❌ FATAL: InternalServerError exceeded {max_retries} retries "
-                            f"on first chunk — stream will fail."
-                        )
+                        log.error(f"{_prefix()} ❌ FATAL: InternalServerError after {max_retries} retries")
                         raise
                     await asyncio.sleep(wait_time)
                     continue
+
                 except Exception as e:
                     log.error(
-                        f"{_fetch_log_prefix()} ❌ Unexpected error on first chunk fetch — "
+                        f"{_prefix()} ❌ Unexpected error on first chunk — "
                         f"type={type(e).__name__} error={e}"
                     )
                     raise
 
+            # ── Yield loop ───────────────────────────────────────────────────
             if isinstance(r, raw.types.upload.File):
                 while True:
                     chunk = r.bytes
                     if not chunk:
                         log.warning(
-                            f"{_fetch_log_prefix()} Empty chunk received — "
-                            f"[CAUSE: Telegram returned 0 bytes at offset={offset}; "
-                            f"possible end-of-file or bad file reference]"
+                            f"{_prefix()} Empty chunk received "
+                            f"[DC={dc_id} offset={offset} — possible EOF or bad file reference]"
                         )
                         break
 
                     chunk_len = len(chunk)
-
                     if part_count == 1:
                         sliced = chunk[first_part_cut:last_part_cut]
                         bytes_yielded += len(sliced)
@@ -323,8 +372,8 @@ class ByteStreamer:
                         yield chunk
 
                     log.debug(
-                        f"{_fetch_log_prefix()} Yielded {chunk_len//1024}KB "
-                        f"total_so_far={bytes_yielded//1024}KB"
+                        f"{_prefix()} Yielded {chunk_len//1024}KB "
+                        f"total={bytes_yielded//1024}KB"
                     )
 
                     current_part += 1
@@ -347,59 +396,76 @@ class ByteStreamer:
                             fetch_ms = (time.monotonic() - t_fetch) * 1000
                             if fetch_ms > 5000:
                                 log.warning(
-                                    f"{_fetch_log_prefix()} ⚠ SLOW chunk — {fetch_ms:.0f}ms "
-                                    f"(DC={dc_id} offset={offset} — "
-                                    f"network congestion or Telegram DC bottleneck)"
+                                    f"{_prefix()} ⚠ SLOW chunk — {fetch_ms:.0f}ms "
+                                    f"DC={dc_id} offset={offset}"
                                 )
                             else:
-                                log.debug(
-                                    f"{_fetch_log_prefix()} Chunk fetched in {fetch_ms:.0f}ms"
-                                )
+                                log.debug(f"{_prefix()} Chunk {fetch_ms:.0f}ms")
                             break
+
                         except FloodWait as e:
-                            log.warning(
-                                f"{_fetch_log_prefix()} FloodWait — waiting {e.value}s "
-                                f"[offset={offset}]"
-                            )
+                            log.warning(f"{_prefix()} FloodWait {e.value}s [offset={offset}]")
                             await asyncio.sleep(e.value)
                             continue
+
+                        except (TimeoutError, asyncio.TimeoutError) as e:
+                            # Session went stale mid-stream — recover safely
+                            retry_count += 1
+                            wait_time = min(2 ** retry_count, 10)
+                            log.error(
+                                f"{_prefix()} ❌ asyncio TimeoutError mid-stream — "
+                                f"error={e} retry={retry_count}/{max_retries} wait={wait_time}s "
+                                f"offset={offset} [DC={dc_id} session stale — rebuilding under lock]"
+                            )
+                            if retry_count >= max_retries:
+                                log.error(
+                                    f"{_prefix()} ❌ FATAL: asyncio TimeoutError after {max_retries} "
+                                    f"retries at offset={offset} DC={dc_id} — video will stall"
+                                )
+                                raise
+                            await asyncio.sleep(wait_time)
+                            media_session = await self._recover_stale_session(
+                                client, file_id, media_session, f"mid-stream-part{current_part}"
+                            )
+                            continue
+
                         except TelegramTimeout as e:
                             retry_count += 1
                             wait_time = min(2 ** retry_count, 10)
                             log.error(
-                                f"{_fetch_log_prefix()} ❌ TelegramTimeout on chunk — "
-                                f"error={e} retry={retry_count}/{max_retries} "
-                                f"next_wait={wait_time}s offset={offset} "
-                                f"[CAUSE: DC={dc_id} timeout — buffering/stall will occur]"
+                                f"{_prefix()} ❌ TelegramTimeout mid-stream — "
+                                f"error={e} retry={retry_count}/{max_retries} wait={wait_time}s "
+                                f"offset={offset} [DC={dc_id} timeout]"
                             )
                             if retry_count >= max_retries:
                                 log.error(
-                                    f"{_fetch_log_prefix()} ❌ FATAL: TelegramTimeout after "
-                                    f"{max_retries} retries at offset={offset} DC={dc_id} "
-                                    f"— this is WHY the video stops/buffers indefinitely"
+                                    f"{_prefix()} ❌ FATAL: TelegramTimeout after {max_retries} retries "
+                                    f"at offset={offset} DC={dc_id} — video buffers indefinitely"
                                 )
                                 raise
                             await asyncio.sleep(wait_time)
                             continue
+
                         except InternalServerError as e:
                             retry_count += 1
                             wait_time = min(3 ** retry_count, 15)
                             log.error(
-                                f"{_fetch_log_prefix()} ❌ Telegram InternalServerError on chunk — "
-                                f"error={e} retry={retry_count}/{max_retries} "
-                                f"next_wait={wait_time}s offset={offset}"
+                                f"{_prefix()} ❌ Telegram InternalServerError mid-stream — "
+                                f"error={e} retry={retry_count}/{max_retries} wait={wait_time}s "
+                                f"offset={offset}"
                             )
                             if retry_count >= max_retries:
                                 log.error(
-                                    f"{_fetch_log_prefix()} ❌ FATAL: InternalServerError after "
-                                    f"{max_retries} retries at offset={offset} DC={dc_id}"
+                                    f"{_prefix()} ❌ FATAL: InternalServerError after {max_retries} "
+                                    f"retries offset={offset} DC={dc_id}"
                                 )
                                 raise
                             await asyncio.sleep(wait_time)
                             continue
+
                         except Exception as e:
                             log.error(
-                                f"{_fetch_log_prefix()} ❌ Unexpected error on chunk fetch — "
+                                f"{_prefix()} ❌ Unexpected error mid-stream — "
                                 f"type={type(e).__name__} error={e} offset={offset}"
                             )
                             raise
@@ -408,7 +474,7 @@ class ByteStreamer:
                 log.error(
                     f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
                     f"Unexpected Telegram response type: {type(r).__name__} "
-                    f"[CAUSE: GetFile did not return upload.File — possibly wrong location or expired file reference]"
+                    f"[GetFile did not return upload.File — expired file reference?]"
                 )
 
         except TelegramTimeout as e:
@@ -416,20 +482,16 @@ class ByteStreamer:
             log.error(
                 f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
                 f"❌ STREAM ABORTED — TelegramTimeout after {total_elapsed:.1f}s "
-                f"yielded={bytes_yielded//1024}KB of {file_size} "
-                f"part={current_part}/{part_count} offset={offset} "
-                f"[WHY: Telegram DC={dc_id} stopped responding — "
-                f"DC may be overloaded, the file reference may have expired, "
-                f"or there is a network issue between server and Telegram]"
+                f"yielded={bytes_yielded//1024}KB part={current_part}/{part_count} offset={offset} "
+                f"[DC={dc_id} stopped responding — overload, expired reference, or network issue]"
             )
             raise
         except InternalServerError as e:
             total_elapsed = time.monotonic() - stream_start
             log.error(
                 f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
-                f"❌ STREAM ABORTED — Telegram InternalServerError after {total_elapsed:.1f}s "
-                f"yielded={bytes_yielded//1024}KB part={current_part}/{part_count} "
-                f"[WHY: Telegram server-side error on DC={dc_id}]"
+                f"❌ STREAM ABORTED — InternalServerError after {total_elapsed:.1f}s "
+                f"yielded={bytes_yielded//1024}KB part={current_part}/{part_count}"
             )
             raise
         except (TimeoutError, AttributeError) as e:
@@ -438,8 +500,7 @@ class ByteStreamer:
                 f"[CLIENT={index}] [DC={dc_id}] [MEDIA={media_id}] "
                 f"❌ STREAM ABORTED — {type(e).__name__}: {e} after {total_elapsed:.1f}s "
                 f"yielded={bytes_yielded//1024}KB part={current_part}/{part_count} "
-                f"[WHY: asyncio timeout or session attribute error — "
-                f"client may have disconnected or session is stale]"
+                f"[asyncio timeout or stale session — retries exhausted]"
             )
             pass
         finally:
@@ -453,11 +514,7 @@ class ByteStreamer:
             )
             work_loads[index] -= 1
 
-    
     async def clean_cache(self) -> None:
-        """
-        function to clean the cache to reduce memory usage
-        """
         while True:
             await asyncio.sleep(self.clean_timer)
             self.cached_file_ids.clear()
