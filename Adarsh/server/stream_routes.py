@@ -469,6 +469,14 @@ async def media_handler(request: web.Request):
 
 class_cache = {}
 
+# Maps client_index → home DC, populated lazily on first request
+_client_home_dcs: dict = {}
+
+async def _home_dc(index: int) -> int:
+    if index not in _client_home_dcs:
+        _client_home_dcs[index] = await multi_clients[index].storage.dc_id()
+    return _client_home_dcs[index]
+
 _LOG_MSG_ID = 1118050  # Only this message gets verbose INFO logging; others use DEBUG
 
 async def media_streamer(request: web.Request, id: int, secure_hash: str):
@@ -479,10 +487,9 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
 
     _log(f"[MSG={id}] ▶ REQUEST range={range_header!r} download={is_download}")
 
-    # ── Client selection ─────────────────────────────────────────────────────
+    # ── Initial client selection (least loaded) ───────────────────────────────
     index = min(work_loads, key=work_loads.get)
     faster_client = multi_clients[index]
-    _log(f"[MSG={id}] Client selected: index={index} loads={dict(work_loads)}")
 
     if faster_client in class_cache:
         tg_connect = class_cache[faster_client]
@@ -492,9 +499,35 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
 
     # ── File properties ──────────────────────────────────────────────────────
     file_id = await tg_connect.get_file_properties(id)
+
+    # ── DC-aware client re-selection ─────────────────────────────────────────
+    # Same-DC media sessions (auth_key reuse) stall on GetFile for some DCs.
+    # Prefer a client whose home_dc differs from the file's DC so we always
+    # go through a cross-DC ExportAuthorization session, which works reliably.
+    file_dc = file_id.dc_id
+    selected_home_dc = await _home_dc(index)
+    if selected_home_dc == file_dc:
+        for alt_idx in sorted(multi_clients.keys(), key=lambda i: work_loads.get(i, 0)):
+            if alt_idx == index:
+                continue
+            try:
+                alt_home_dc = await _home_dc(alt_idx)
+                if alt_home_dc != file_dc:
+                    index = alt_idx
+                    faster_client = multi_clients[alt_idx]
+                    if faster_client in class_cache:
+                        tg_connect = class_cache[faster_client]
+                    else:
+                        tg_connect = ByteStreamer(faster_client)
+                        class_cache[faster_client] = tg_connect
+                    _log(f"[MSG={id}] DC-swap: using client={index} (home_dc={alt_home_dc}) for file_dc={file_dc}")
+                    break
+            except Exception:
+                continue
+
     _log(
         f"[MSG={id}] File: dc_id={file_id.dc_id} size={file_id.file_size} "
-        f"mime={getattr(file_id, 'mime_type', '?')} name={getattr(file_id, 'file_name', '?')}"
+        f"client={index} mime={getattr(file_id, 'mime_type', '?')} name={getattr(file_id, 'file_name', '?')}"
     )
 
     if file_id.unique_id[:6] != secure_hash:
