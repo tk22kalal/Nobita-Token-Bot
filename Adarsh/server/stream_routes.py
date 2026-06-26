@@ -24,6 +24,8 @@ from Adarsh.utils.human_readable import humanbytes
 from Adarsh.vars import Var
 from Adarsh.server.rate_limiter import rate_limiter
 
+# Dedicated logger for stream route diagnostics
+stream_log = logging.getLogger("stream.routes")
 
 routes = web.RouteTableDef()
 
@@ -395,14 +397,31 @@ async def watch_handler(request: web.Request):
         player = request.rel_url.query.get("player")
         return web.Response(text=await render_page(id, secure_hash, player=player), content_type='text/html')
     except InvalidHash as e:
+        stream_log.warning(
+            f"[WATCH] ❌ Invalid hash for path={request.path} "
+            f"ip={request.headers.get('X-Forwarded-For', request.remote)} "
+            f"[CAUSE: hash in URL does not match file — tampered or wrong link]"
+        )
         raise web.HTTPForbidden(text=e.message)
     except FIleNotFound as e:
+        stream_log.warning(
+            f"[WATCH] ❌ File not found for path={request.path} "
+            f"[CAUSE: message ID not in BIN_CHANNEL or file deleted from Telegram]"
+        )
         raise web.HTTPNotFound(text=e.message)
     except (AttributeError, BadStatusLine, ConnectionResetError) as e:
-        logging.warning(f"Transient error while handling /watch request for path {request.path}: {e}")
+        stream_log.warning(
+            f"[WATCH] Transient error path={request.path} "
+            f"type={type(e).__name__} error={e} "
+            f"[CAUSE: client disconnected mid-request or bad HTTP framing]"
+        )
         return web.Response(status=503, text="Service temporarily unavailable")
     except Exception as e:
-        logging.critical(e.with_traceback(None))
+        stream_log.critical(
+            f"[WATCH] Unhandled error path={request.path} "
+            f"type={type(e).__name__} error={e}",
+            exc_info=True
+        )
         raise web.HTTPInternalServerError(text=str(e))
 
 @routes.get(r"/{path:(?!api/)(?!watch/)(?!prepare/)[A-Za-z0-9_-]*\d.*}", allow_head=True)
@@ -421,54 +440,120 @@ async def media_handler(request: web.Request):
             secure_hash = request.rel_url.query.get("hash")
         return await media_streamer(request, id, secure_hash)
     except InvalidHash as e:
+        stream_log.warning(
+            f"[MEDIA] ❌ Invalid hash path={request.path} "
+            f"ip={request.headers.get('X-Forwarded-For', request.remote)} "
+            f"[CAUSE: hash mismatch — link tampered or wrong hash param]"
+        )
         raise web.HTTPForbidden(text=e.message)
     except FIleNotFound as e:
+        stream_log.warning(
+            f"[MEDIA] ❌ File not found path={request.path} "
+            f"[CAUSE: message ID missing from BIN_CHANNEL or Telegram deleted it]"
+        )
         raise web.HTTPNotFound(text=e.message)
     except (AttributeError, BadStatusLine, ConnectionResetError) as e:
-        logging.warning(f"Transient error while handling request for path {request.path}: {e}")
+        stream_log.warning(
+            f"[MEDIA] Transient error path={request.path} "
+            f"type={type(e).__name__} error={e} "
+            f"[CAUSE: client disconnected or network reset during stream]"
+        )
         return web.Response(status=503, text="Service temporarily unavailable")
     except Exception as e:
-        logging.critical(e.with_traceback(None))
+        stream_log.critical(
+            f"[MEDIA] Unhandled error path={request.path} "
+            f"type={type(e).__name__} error={e}",
+            exc_info=True
+        )
         raise web.HTTPInternalServerError(text=str(e))
 
 class_cache = {}
 
 async def media_streamer(request: web.Request, id: int, secure_hash: str):
+    req_start = time.monotonic()
+    client_ip = request.headers.get("X-Forwarded-For", request.remote or "unknown").split(",")[0].strip()
+    user_agent = request.headers.get("User-Agent", "unknown")[:120]
     range_header = request.headers.get("Range", 0)
-    is_download = request.query.get("download") == "1"  # Check if download is requested
-    
+    is_download = request.query.get("download") == "1"
+
+    stream_log.info(
+        f"[MSG={id}] ▶ REQUEST — ip={client_ip} "
+        f"range={range_header!r} download={is_download} "
+        f"ua={user_agent!r}"
+    )
+
+    # ── Client selection ─────────────────────────────────────────────────────
     index = min(work_loads, key=work_loads.get)
     faster_client = multi_clients[index]
-    
-    if Var.MULTI_CLIENT:
-        logging.info(f"Client {index} is now serving {request.remote}")
+
+    current_loads = {k: v for k, v in work_loads.items()}
+    stream_log.info(
+        f"[MSG={id}] Client selected: index={index} "
+        f"all_loads={current_loads} total_clients={len(multi_clients)}"
+    )
 
     if faster_client in class_cache:
         tg_connect = class_cache[faster_client]
-        logging.debug(f"Using cached ByteStreamer object for client {index}")
+        stream_log.debug(f"[MSG={id}] Reusing cached ByteStreamer for client {index}")
     else:
-        logging.debug(f"Creating new ByteStreamer object for client {index}")
+        stream_log.info(f"[MSG={id}] Creating new ByteStreamer for client {index}")
         tg_connect = ByteStreamer(faster_client)
         class_cache[faster_client] = tg_connect
-    logging.debug("before calling get_file_properties")
+
+    # ── File properties ──────────────────────────────────────────────────────
+    t0 = time.monotonic()
     file_id = await tg_connect.get_file_properties(id)
-    logging.debug("after calling get_file_properties")
-    
+    prop_ms = (time.monotonic() - t0) * 1000
+    stream_log.info(
+        f"[MSG={id}] File properties resolved in {prop_ms:.0f}ms — "
+        f"dc_id={file_id.dc_id} file_size={file_id.file_size} "
+        f"mime={getattr(file_id, 'mime_type', 'unknown')} "
+        f"file_name={getattr(file_id, 'file_name', 'unknown')}"
+    )
+
     if file_id.unique_id[:6] != secure_hash:
-        logging.debug(f"Invalid hash for message with ID {id}")
+        stream_log.warning(
+            f"[MSG={id}] ❌ Hash mismatch — "
+            f"expected={secure_hash!r} got={file_id.unique_id[:6]!r} "
+            f"[CAUSE: link tampered or wrong hash]"
+        )
         raise InvalidHash
-    
+
     file_size = file_id.file_size
 
+    # ── Range parsing ────────────────────────────────────────────────────────
     if range_header:
-        from_bytes, until_bytes = range_header.replace("bytes=", "").split("-")
-        from_bytes = int(from_bytes)
-        until_bytes = int(until_bytes) if until_bytes else file_size - 1
+        try:
+            range_str = range_header.replace("bytes=", "")
+            from_bytes_str, until_bytes_str = range_str.split("-")
+            from_bytes = int(from_bytes_str)
+            until_bytes = int(until_bytes_str) if until_bytes_str else file_size - 1
+        except Exception as e:
+            stream_log.error(
+                f"[MSG={id}] ❌ Malformed Range header {range_header!r}: {e} "
+                f"[CAUSE: client sent invalid range — browser bug or unusual player]"
+            )
+            return web.Response(status=400, body=f"Bad Range header: {range_header}")
     else:
         from_bytes = request.http_range.start or 0
         until_bytes = (request.http_range.stop or file_size) - 1
 
+    if file_size > 0:
+        pct_info = f"pct_start={from_bytes/file_size*100:.1f}% pct_end={until_bytes/file_size*100:.1f}%"
+    else:
+        pct_info = "pct=N/A(file_size=0)"
+    stream_log.info(
+        f"[MSG={id}] Range parsed — from={from_bytes} until={until_bytes} "
+        f"file_size={file_size} {pct_info}"
+    )
+
+    # ── Range validation ─────────────────────────────────────────────────────
     if (until_bytes > file_size) or (from_bytes < 0) or (until_bytes < from_bytes):
+        stream_log.warning(
+            f"[MSG={id}] ❌ Range not satisfiable — "
+            f"from={from_bytes} until={until_bytes} file_size={file_size} "
+            f"[CAUSE: player requested bytes outside file bounds]"
+        )
         return web.Response(
             status=416,
             body="416: Range not satisfiable",
@@ -481,21 +566,34 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
     offset = from_bytes - (from_bytes % chunk_size)
     first_part_cut = from_bytes - offset
     last_part_cut = until_bytes % chunk_size + 1
-
     req_length = until_bytes - from_bytes + 1
     part_count = math.ceil((until_bytes + 1) / chunk_size) - math.floor(offset / chunk_size)
+
+    stream_log.info(
+        f"[MSG={id}] Chunk math — offset={offset} first_cut={first_part_cut} "
+        f"last_cut={last_part_cut} req_length={req_length//1024}KB "
+        f"part_count={part_count} chunk_size={chunk_size//1024}KB"
+    )
+
+    if part_count <= 0:
+        stream_log.error(
+            f"[MSG={id}] ❌ Invalid part_count={part_count} — "
+            f"offset={offset} until_bytes={until_bytes} from_bytes={from_bytes} "
+            f"[CAUSE: math error or zero-length range — video may not start]"
+        )
+
     body = tg_connect.yield_file(
         file_id, index, offset, first_part_cut, last_part_cut, part_count, chunk_size
     )
 
+    # ── MIME / filename ──────────────────────────────────────────────────────
     mime_type = file_id.mime_type
     file_name = file_id.file_name
-    
-    # Set disposition based on request type - force download if download=1 parameter
+
     if is_download:
-        disposition = "attachment"  # Force download
+        disposition = "attachment"
     elif mime_type and (mime_type.startswith("video/") or mime_type.startswith("audio/")):
-        disposition = "inline"  # Allow inline playback for media files
+        disposition = "inline"
     else:
         disposition = "attachment"
 
@@ -512,28 +610,36 @@ async def media_streamer(request: web.Request, id: int, secure_hash: str):
             mime_type = "application/octet-stream"
             file_name = f"{secrets.token_hex(2)}.unknown"
 
-    # Enhanced headers for better proxy compatibility, streaming, and iOS/Android iframe support
+    # ── Headers ──────────────────────────────────────────────────────────────
     headers = {
         "Content-Type": f"{mime_type}",
         "Content-Length": str(req_length),
         "Content-Disposition": f'{disposition}; filename="{file_name}"',
         "Accept-Ranges": "bytes",
-        "Cache-Control": "no-cache",  # Allow some caching but prevent stale content
-        "Access-Control-Allow-Origin": "*",  # CORS for browser compatibility
+        "Cache-Control": "no-cache",
+        "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         "Access-Control-Allow-Headers": "Range, Content-Range, Content-Length",
         "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
         "X-Content-Type-Options": "nosniff",
-        "X-Forwarded-For": request.remote,  # Preserve original IP for Cloudflare
+        "X-Forwarded-For": request.remote,
     }
-    
-    # Only include Content-Range header for partial content (206) responses
-    # Including it in 200 OK responses violates HTTP spec and can corrupt downloads
+
+    status_code = 206 if range_header else 200
     if range_header:
         headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
 
+    setup_ms = (time.monotonic() - req_start) * 1000
+    stream_log.info(
+        f"[MSG={id}] ✅ Sending response — "
+        f"status={status_code} content_length={req_length//1024}KB "
+        f"mime={mime_type} disposition={disposition} "
+        f"setup_time={setup_ms:.0f}ms "
+        f"[DC={file_id.dc_id} parts={part_count}]"
+    )
+
     return web.Response(
-        status=206 if range_header else 200,
+        status=status_code,
         body=body,
         headers=headers,
     )
