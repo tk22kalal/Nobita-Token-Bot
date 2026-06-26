@@ -42,7 +42,11 @@ class ByteStreamer:
         media_session = client.media_sessions.get(file_id.dc_id, None)
 
         if media_session is None:
-            if file_id.dc_id != await client.storage.dc_id():
+            client_dc = await client.storage.dc_id()
+            same_dc = file_id.dc_id == client_dc
+
+            if not same_dc:
+                log.info(f"[DC={file_id.dc_id}] Creating cross-DC media session (client_dc={client_dc})")
                 media_session = Session(
                     client,
                     file_id.dc_id,
@@ -66,14 +70,13 @@ class ByteStreamer:
                         )
                         break
                     except AuthBytesInvalid:
-                        log.debug(
-                            f"Invalid authorization bytes for DC {file_id.dc_id}"
-                        )
+                        log.debug(f"Invalid authorization bytes for DC {file_id.dc_id}")
                         continue
                 else:
                     await media_session.stop()
                     raise AuthBytesInvalid
             else:
+                log.info(f"[DC={file_id.dc_id}] Creating same-DC media session using auth_key")
                 media_session = Session(
                     client,
                     file_id.dc_id,
@@ -83,10 +86,10 @@ class ByteStreamer:
                 )
                 await media_session.start()
 
-            log.debug(f"Created media session for DC {file_id.dc_id}")
+            log.info(f"[DC={file_id.dc_id}] Media session ready (same_dc={same_dc})")
             client.media_sessions[file_id.dc_id] = media_session
         else:
-            log.debug(f"Using cached media session for DC {file_id.dc_id}")
+            log.debug(f"[DC={file_id.dc_id}] Reusing cached media session")
 
         return media_session
 
@@ -145,7 +148,7 @@ class ByteStreamer:
     ) -> Union[str, None]:
         client = self.client
         work_loads[index] += 1
-        log.debug(f"Starting to yield file with client {index}.")
+        log.info(f"[DC={file_id.dc_id}] yield_file START client={index} parts={part_count} offset={offset}")
         media_session = await self.generate_media_session(client, file_id)
 
         current_part = 1
@@ -182,10 +185,10 @@ class ByteStreamer:
                             location=location, offset=offset, limit=chunk_size
                         ),
                     )
-        except (TimeoutError, AttributeError):
-            pass
+        except (TimeoutError, AttributeError) as e:
+            log.warning(f"[DC={file_id.dc_id}] yield_file ERROR client={index} after part={current_part}/{part_count}: {type(e).__name__}")
         finally:
-            log.debug(f"Finished yielding file with {current_part} parts.")
+            log.info(f"[DC={file_id.dc_id}] yield_file END client={index} parts_sent={current_part - 1}/{part_count}")
             work_loads[index] -= 1
 
     async def clean_cache(self) -> None:
