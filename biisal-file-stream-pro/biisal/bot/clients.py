@@ -1,5 +1,3 @@
-# (c) biisal (c) adarsh-goel
-
 import asyncio
 import logging
 from ..vars import Var
@@ -15,7 +13,7 @@ async def initialize_clients():
     if not all_tokens:
         print("No additional clients found, using default client")
         return
-    
+
     async def start_client(client_id, token):
         try:
             print(f"Starting - Client {client_id}")
@@ -35,9 +33,10 @@ async def initialize_clients():
             return client_id, client
         except Exception:
             logging.error(f"Failed starting Client - {client_id} Error:", exc_info=True)
-    
+            return None
+
     clients = await asyncio.gather(*[start_client(i, token) for i, token in all_tokens.items()])
-    multi_clients.update(dict(clients))
+    multi_clients.update(dict([c for c in clients if c is not None]))
     if len(multi_clients) != 1:
         Var.MULTI_CLIENT = True
         print("Multi-Client Mode Enabled")
