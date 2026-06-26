@@ -180,7 +180,7 @@ class ByteStreamer:
                             location=location, offset=offset, limit=chunk_size
                         ),
                     )
-        except (TimeoutError, AttributeError):
+        except Exception:
             pass
         finally:
             log.debug(f"Finished yielding file with {current_part} parts.")
