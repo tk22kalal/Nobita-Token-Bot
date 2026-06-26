@@ -1,5 +1,5 @@
 # (c) @biisal
-# (c) adars h-goel
+# (c) adarsh-goel
 import os
 import sys
 import glob
@@ -70,26 +70,18 @@ async def start_services():
     await app.setup()
     bind_address = "0.0.0.0" if Var.ON_HEROKU else Var.BIND_ADRESS
     await web.TCPSite(app, bind_address, Var.PORT).start()
-    print('----------------------------- DONE ---------------------------------------------------------------------')
+    print('----------------------------- DONE -----------------------------------')
     print('\n')
-    print('---------------------------------------------------------------------------------------------------------')
-    print('---------------------------------------------------------------------------------------------------------')
-    print(' follow me for more such exciting bots! https://github.com/biisal')
-    print('---------------------------------------------------------------------------------------------------------')
-    print('\n')
-    print('----------------------- Service Started -----------------------------------------------------------------')
+    print('----------------------- Service Started --------------------------')
     print('                        bot =>> {}'.format((await StreamBot.get_me()).first_name))
     print('                        server ip =>> {}:{}'.format(bind_address, Var.PORT))
     print('                        Owner =>> {}'.format((Var.OWNER_USERNAME)))
     if Var.ON_HEROKU:
-        print('                        app runnng on =>> {}'.format(Var.FQDN))
-    print('---------------------------------------------------------------------------------------------------------')
+        print('                        app running on =>> {}'.format(Var.FQDN))
+    print('------------------------------------------------------------------')
     print(LOGO)
-    try: 
-        await StreamBot.send_message(chat_id=Var.OWNER_ID[0] ,text='<b>ᴊᴀɪ sʜʀᴇᴇ ᴋʀɪsʜɴᴀ 😎\nʙᴏᴛ ʀᴇsᴛᴀʀᴛᴇᴅ !!</b>')
-    except Exception as e:
-        print(f'got this err to send restart msg to owner : {e}')
     await idle()
+
 
 if __name__ == '__main__':
     try:
