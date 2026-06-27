@@ -535,11 +535,14 @@ async def root_tree_handler(request: web.Request) -> web.Response:
     token = Var.GIT_TOKEN
     if not token:
         return web.Response(
-            text="<h2>GIT_TOKEN not configured.</h2>",
-            content_type="text/html", status=500
+            text="<!DOCTYPE html><html><body style='font-family:sans-serif;padding:40px;background:#0d1117;color:#f85149'>"
+                 "<h2>⚙️ Configuration Required</h2>"
+                 "<p>Set the <code>GIT_TOKEN</code> environment variable on the server and restart the bot.</p>"
+                 "</body></html>",
+            content_type="text/html", status=200
         )
 
-    api_url = f"https://api.github.com/repos/{_ROOT_REPO}/git/trees/HEAD?recursive=1"
+    api_url = f"https://api.github.com/repos/{_ROOT_REPO}/git/trees/main?recursive=1"
     headers_gh = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github.v3+json",
@@ -608,8 +611,8 @@ details[open]>summary .arr{{transform:rotate(90deg)}}
 </style>
 </head>
 <body>
-<h1>📁 {_ROOT_FOLDER}</h1>
-<p class="meta">Repo: {_ROOT_REPO} &nbsp;·&nbsp; {ts}</p>
+<h1>📁 File Index</h1>
+<p class="meta">Last updated: {ts}</p>
 {trunc_warn}
 <div class="tree">
 {tree_html}
